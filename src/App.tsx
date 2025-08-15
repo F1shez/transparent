@@ -23,7 +23,6 @@ export default function App() {
   );
   const [isMain, setIsMain] = useState(false);
   const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
-  const [peeoples, setPeoples] = useState<string[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
 
