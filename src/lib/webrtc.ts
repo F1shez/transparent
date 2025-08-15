@@ -7,11 +7,13 @@ export type PeerHandlers = {
   onData: (text: string) => void;
   onOpen?: () => void;
   onSignalingStateChange?: (s: RTCSignalingState) => void;
+  onTrack?: (event: RTCTrackEvent) => void;
 };
 
 export function createPeer(initiator: boolean, handlers: PeerHandlers) {
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    bundlePolicy: 'max-bundle',
   });
 
   // Очередь ICE-кандидатов до установки remoteDescription
@@ -39,6 +41,8 @@ export function createPeer(initiator: boolean, handlers: PeerHandlers) {
   pc.onicecandidate = (e) => {
     // Отправка кандидата происходит снаружи, здесь только сбор
   };
+
+  pc.ontrack = (event) => handlers.onTrack?.(event);
 
   pc.onsignalingstatechange = () =>
     handlers.onSignalingStateChange?.(pc.signalingState);
