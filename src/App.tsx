@@ -68,7 +68,7 @@ export default function App() {
 
       if (msg.type === "peer-joined") {
         pushLog(`Peer joined: ${msg.id}.`);
-        setHaveUserWaitConnection([...haveUserWaitConnection, msg.id]);
+        setHaveUserWaitConnection(prev => [...prev, msg.id]);
         return;
       }
 
@@ -87,7 +87,7 @@ export default function App() {
             remoteAudiosRef.current.delete(msg.id);
           }
         }
-        setHaveUserWaitConnection([...haveUserWaitConnection.filter(id => id !== msg.id)]);
+        setHaveUserWaitConnection(prev => [...prev.filter(id => id !== msg.id)]);
         setConnected(false);
         return;
       }
@@ -166,7 +166,7 @@ export default function App() {
   }
 
   async function startMessage(targetId: string) {
-    setHaveUserWaitConnection([...haveUserWaitConnection.filter(id => id !== targetId)]);
+    setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
     if (!joinedRef.current || !myIdRef.current) {
       pushLog("Не присоединились к комнате еще");
       return;
