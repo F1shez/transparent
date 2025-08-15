@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 
 type Msg =
   | { type: "join"; roomId: string }
-  | { type: "signal"; roomId: string; payload: any }
+  | { type: "signal"; to: string; payload: any }
   | { type: "ping" };
 
 type Outbound =
@@ -80,11 +80,16 @@ wss.on("connection", (ws) => {
     if (msg.type === "signal") {
       const roomId = state.roomId;
       if (!roomId) return;
-      broadcastToRoom(roomId, ws, {
-        type: "signal",
-        from: state.id,
-        payload: msg.payload,
-      });
+      const room = rooms.get(roomId);
+      if (!room) return;
+      const { to, payload } = msg;
+      for (const client of room) {
+        const clientState = clients.get(client);
+        if (clientState?.id === to && client.readyState === client.OPEN) {
+          client.send(JSON.stringify({ type: "signal", from: state.id, payload }));
+          break;
+        }
+      }
       return;
     }
   });

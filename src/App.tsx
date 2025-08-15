@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPeer, type SignalEnvelope } from "./lib/webrtc";
 import randomString from "crypto-random-string";
+import { useLogs } from "./components/Logs";
 
 type ServerMsg =
   | { type: "joined"; id: string; roomId: string; role: "main" | "peer" }
@@ -10,7 +11,7 @@ type ServerMsg =
   | { type: "main-changed"; id: string };
 
 export default function App() {
-  const [log, setLog] = useState<string[]>([]);
+  const { pushLog, Logs } = useLogs();
   const [messages, setMessages] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
@@ -21,7 +22,8 @@ export default function App() {
       : randomString({ length: 32, type: "hex" }))
   );
   const [isMain, setIsMain] = useState(false);
-  const [haveUserWaitConnection, setHaveUserWaitConnection] = useState(false);
+  const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
+  const [peeoples, setPeoples] = useState<string[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -29,8 +31,6 @@ export default function App() {
 
   const myIdRef = useRef<string | null>(null);
   const joinedRef = useRef(false);
-
-  const pushLog = (s: string) => setLog((L) => [...L, s]);
 
   useEffect(() => {
     const ws = new WebSocket("ws://localhost:3001");
@@ -67,7 +67,7 @@ export default function App() {
 
       if (msg.type === "peer-joined") {
         pushLog(`Peer joined: ${msg.id}.`);
-        setHaveUserWaitConnection(true);
+        setHaveUserWaitConnection([...haveUserWaitConnection, msg.id]);
         return;
       }
 
@@ -78,41 +78,41 @@ export default function App() {
           if (peer) {
             peer.pc.close();
             peersRef.current.delete(msg.id);
+            pushLog('delete peer')
           }
         }
-        setHaveUserWaitConnection(false);
+        setHaveUserWaitConnection([...haveUserWaitConnection.filter(id => id !== msg.id)]);
         setConnected(false);
         return;
       }
 
-      // create peer in peer side (client)
       if (msg.type === "signal" && myIdRef.current) {
         const payload = msg.payload;
 
-        //create peer if not exist
-        if (peersRef.current && peersRef.current.size === 0) {
-          const peer = createPeer({
-            onData: handleData,
+        // Create peer if not exist
+        if (!peersRef.current.has(msg.from)) {
+          const peer = createPeer(false, {
+            onData: (text) => handleData(msg.from, text),
             onOpen: () => {
               pushLog("DataChannel open");
               setConnected(true);
             },
             onSignalingStateChange: (s) => pushLog(`Signaling: ${s}`),
-          })
-          peersRef.current.set(myIdRef.current, peer);
+          });
+          peersRef.current.set(msg.from, peer);
 
           peer.pc.onicecandidate = (e) => {
             if (!e.candidate) return;
-            sendSignal({ type: "candidate", candidate: e.candidate.toJSON() });
+            sendSignal(msg.from, { type: "candidate", candidate: e.candidate.toJSON() });
           };
         }
-        const peer = peersRef.current.get(myIdRef.current);
+        const peer = peersRef.current.get(msg.from);
         if (peer) {
           if (payload.type === "offer") {
             await peer.applyRemoteDescription(payload.sdp);
             const answer = await peer.pc.createAnswer();
             await peer.pc.setLocalDescription(answer);
-            sendSignal({ type: "answer", sdp: answer });
+            sendSignal(msg.from, { type: "answer", sdp: answer });
           } else if (payload.type === "answer") {
             await peer.applyRemoteDescription(payload.sdp);
           } else if (payload.type === "candidate") {
@@ -129,8 +129,8 @@ export default function App() {
   }, []);
 
 
-  function sendSignal(payload: SignalEnvelope) {
-    wsRef.current?.send(JSON.stringify({ type: "signal", roomId, payload }));
+  function sendSignal(to: string, payload: SignalEnvelope) {
+    wsRef.current?.send(JSON.stringify({ type: "signal", to, payload }));
   }
 
   function getPageName() {
@@ -138,20 +138,19 @@ export default function App() {
     return cleanPath.substring(cleanPath.lastIndexOf("/") + 1);
   }
 
-  async function startMessage() {
-    setHaveUserWaitConnection(false);
+  async function startMessage(targetId: string) {
+    setHaveUserWaitConnection([...haveUserWaitConnection.filter(id => id !== targetId)]);
     if (!joinedRef.current || !myIdRef.current) {
       pushLog("Не присоединились к комнате еще");
       return;
     }
 
-    if (peersRef.current.get(myIdRef.current)) {
+    if (peersRef.current.get(targetId)) {
       pushLog("Peer уже создан");
       return;
     }
-
-    const peer = createPeer({
-      onData: handleData,
+    const peer = createPeer(true, {
+      onData: (text) => handleData(targetId, text),
       onOpen: () => {
         pushLog("DataChannel open");
         setConnected(true);
@@ -159,30 +158,56 @@ export default function App() {
       onSignalingStateChange: (s) => pushLog(`Signaling: ${s}`),
     });
 
-    peersRef.current.set(myIdRef.current, peer);
+    peersRef.current.set(targetId, peer);
 
     peer.pc.onicecandidate = (e) => {
       if (!e.candidate) return;
-      sendSignal({ type: "candidate", candidate: e.candidate.toJSON() });
+      sendSignal(targetId, { type: "candidate", candidate: e.candidate.toJSON() });
     };
 
     const offer = await peer.pc.createOffer();
     await peer.pc.setLocalDescription(offer);
-    sendSignal({ type: "offer", sdp: offer });
+    sendSignal(targetId, { type: "offer", sdp: offer });
     pushLog("Offer sent");
   }
 
-  async function handleData(data: string) {
-    setMessages((m) => [...m, "Peer: " + data]);
+  async function handleData(peerId: string, data: string) {
+    try {
+      const json = JSON.parse(data);
+      setMessages((m) => [...m, `${json.from}: ${json.text}`]);
+
+      if (isMain) {
+        // Forward to all other peers
+        const forward = JSON.stringify(json);
+        peersRef.current.forEach((p, id) => {
+          if (id !== peerId && p) {
+            try {
+              p.channel.send(forward);
+            } catch (e) {
+              console.error(`Failed to forward to ${id}:`, e);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Invalid message data:", e);
+    }
   }
 
   async function sendMessage() {
-    if (!myIdRef.current) return;
-    const peer = peersRef.current.get(myIdRef.current);
-    if (!peer) return;
-    peer.channel.send(input);
-    setMessages((m) => [...m, "Me: " + input]);
-    setInput("");
+    if (!myIdRef.current || peersRef.current.size === 0) return;
+    const msg = { from: myIdRef.current, text: input };
+    const json = JSON.stringify(msg);
+    peersRef.current.forEach((peer) => {
+      if (!peer) return;
+      try {
+        peer.channel.send(json);
+        setMessages((m) => [...m, `Me (${myIdRef.current}): ${input}`]);
+        setInput("");
+      } catch (e) {
+        console.error(e);
+      }
+    });
   }
 
   return (
@@ -193,9 +218,13 @@ export default function App() {
 
       <div style={{ display: "flex", gap: 16 }}>
         <div style={{ flex: 1 }}>
-          {haveUserWaitConnection && isMain && (
-            <button onClick={startMessage}>Разрешить подключение</button>
-          )}
+          {haveUserWaitConnection.length > 0 && isMain && <>
+            {haveUserWaitConnection.map((userId, index) =>
+              <li>
+                <button onClick={() => startMessage(userId)}>{index}: Разрешить подключение {userId}</button>
+              </li>)
+            }
+          </>}
 
           <div style={{ marginTop: 16, padding: 12, border: "1px solid #ddd" }}>
             <div>
@@ -217,21 +246,7 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ flex: 1 }}>
-          <h3>Log</h3>
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              fontSize: 12,
-              border: "1px solid #ddd",
-              padding: 12,
-              height: 300,
-              overflow: "auto",
-            }}
-          >
-            {log.join("\n")}
-          </pre>
-        </div>
+        <Logs />
       </div>
     </div>
   );

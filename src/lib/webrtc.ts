@@ -1,4 +1,3 @@
-// client/src/lib/webrtc.ts
 export type SignalEnvelope =
   | { type: "offer"; sdp: RTCSessionDescriptionInit }
   | { type: "answer"; sdp: RTCSessionDescriptionInit }
@@ -10,7 +9,7 @@ export type PeerHandlers = {
   onSignalingStateChange?: (s: RTCSignalingState) => void;
 };
 
-export function createPeer(handlers: PeerHandlers) {
+export function createPeer(initiator: boolean, handlers: PeerHandlers) {
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
@@ -21,15 +20,20 @@ export function createPeer(handlers: PeerHandlers) {
 
   // DataChannel для чата
   let channel: RTCDataChannel | null = null;
-  channel = pc.createDataChannel("chat");
-  channel.onopen = () => handlers.onOpen?.();
-  channel.onmessage = (e) => handlers.onData(e.data);
 
-  // Если вы «ответчик», канал придёт с ondatachannel
+  if (initiator) {
+    channel = pc.createDataChannel("chat");
+    if (channel) {
+      channel.onopen = () => handlers.onOpen?.();
+      channel.onmessage = (e) => handlers.onData(e.data as string);
+    }
+  }
+
+  // Для ответчика (или если инициатор получит канал) — устанавливаем обработчики
   pc.ondatachannel = (e) => {
     channel = e.channel;
     channel.onopen = () => handlers.onOpen?.();
-    channel.onmessage = (ev) => handlers.onData(ev.data);
+    channel.onmessage = (ev) => handlers.onData(ev.data as string);
   };
 
   pc.onicecandidate = (e) => {
@@ -38,6 +42,11 @@ export function createPeer(handlers: PeerHandlers) {
 
   pc.onsignalingstatechange = () =>
     handlers.onSignalingStateChange?.(pc.signalingState);
+
+  // Дополнительные логи для отладки (можно удалить позже)
+  pc.oniceconnectionstatechange = () => console.log(`ICE connection state: ${pc.iceConnectionState}`);
+  pc.onconnectionstatechange = () => console.log(`Connection state: ${pc.connectionState}`);
+  pc.onicegatheringstatechange = () => console.log(`ICE gathering state: ${pc.iceGatheringState}`);
 
   async function applyRemoteDescription(desc: RTCSessionDescriptionInit) {
     // защита от «двойного answer» и некорректных состояний
