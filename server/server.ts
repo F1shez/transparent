@@ -18,7 +18,7 @@ type ClientState = {
   roomId?: string;
 };
 
-const wss = new WebSocketServer({ port: 60763 });
+const wss = new WebSocketServer({ host: "0.0.0.0", port: 60764 });
 
 const rooms = new Map<string, Set<WebSocket>>();
 const clients = new WeakMap<WebSocket, ClientState>();
@@ -121,4 +121,4 @@ wss.on("connection", (ws) => {
   });
 });
 
-console.log("Signaling server running on ws://localhost:3001");
+console.log("Signaling server running on 60764");
