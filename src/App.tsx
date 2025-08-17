@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPeer, type SignalEnvelope } from "./lib/webrtc";
 import randomString from "crypto-random-string";
 import { useLogs } from "./components/Logs";
+import toast, { Toaster } from "react-hot-toast";
 
 type ServerMsg =
   | { type: "joined"; id: string; roomId: string; role: "main" | "peer" }
@@ -23,6 +24,7 @@ export default function App() {
   );
   const [isMain, setIsMain] = useState(false);
   const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
+  const [usersOnline, setUsersOnline] = useState<string[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());  // Для хранения <audio> для каждого peer
 
@@ -88,6 +90,7 @@ export default function App() {
           }
         }
         setHaveUserWaitConnection(prev => [...prev.filter(id => id !== msg.id)]);
+        setUsersOnline(prev => [...prev.filter(id => id !== msg.id)]);
         setConnected(false);
         return;
       }
@@ -156,7 +159,6 @@ export default function App() {
   }
 
   async function startMessage(targetId: string) {
-    setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
     if (!joinedRef.current || !myIdRef.current) {
       pushLog("Не присоединились к комнате еще");
       return;
@@ -166,6 +168,10 @@ export default function App() {
       pushLog("Peer уже создан");
       return;
     }
+
+    setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
+    setUsersOnline(prev => [...prev, targetId]);
+
     const peer = createPeer(true, {
       onData: (text) => handleData(targetId, text),
       onOpen: () => {
@@ -179,7 +185,6 @@ export default function App() {
           const audio = new Audio();
           audio.srcObject = stream;
           audio.autoplay = true;
-          audio.play().catch((e) => pushLog(`Audio play error: ${e}`));
           remoteAudiosRef.current.set(targetId, audio);
         }
       },
@@ -227,6 +232,10 @@ export default function App() {
         // Renegotiate: Создаем новый offer и отправляем
         renegotiate(peerId);
       });
+
+      remoteAudiosRef.current.forEach((audio, peerId) => {
+        audio.play().catch((e) => pushLog(`Deferred audio play error (${peerId}): ${e}`));
+      });
     } catch (e) {
       pushLog(`Error getting audio: ${e}`);
     }
@@ -243,7 +252,6 @@ export default function App() {
   }
 
   async function handleData(peerId: string, data: string) {
-    debugger
     try {
       const json = JSON.parse(data);
       setMessages((m) => [...m, `${json.from}: ${json.text}`]);
@@ -268,7 +276,6 @@ export default function App() {
 
   async function handleTrack(peerId: string, event: any) {
     console.log('handleTrack called with:', { peerId, event });
-    debugger
     const stream = event.streams[0];
     if (stream) {
       pushLog(`Received remote stream from ${peerId}`);
@@ -278,7 +285,6 @@ export default function App() {
       audio.play().catch((e) => pushLog(`Audio play error: ${e}`));
       remoteAudiosRef.current.set(peerId, audio);
       if (isMain) {
-        debugger
         // startVoice();
         // const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         // setLocalStream(stream);
@@ -316,16 +322,27 @@ export default function App() {
 
   return (
     <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
+      <Toaster />
       <h1>P2P Messenger</h1>
-      <span>{roomId}</span>
+      <button onClick={() => { navigator.clipboard.writeText(window.location.href.split('?')[0] + "?roomId=" + roomId); toast.success('Room id copied to clipboard!') }}>Room id: {roomId}</button>
       <div>Role: {isMain ? "Main" : "Peer"}</div>
 
       <div style={{ display: "flex", gap: 16 }}>
         <div style={{ flex: 1 }}>
           {haveUserWaitConnection.length > 0 && isMain && <>
+            Запрос на подключение:
             {haveUserWaitConnection.map((userId, index) =>
               <li>
                 <button onClick={() => startMessage(userId)}>{index}: Разрешить подключение {userId}</button>
+              </li>)
+            }
+          </>}
+
+          {usersOnline.length > 0 && isMain && <>
+            Пользователи онлайн:
+            {usersOnline.map((userId, index) =>
+              <li>
+                <ul>{index}:{userId}</ul>
               </li>)
             }
           </>}
