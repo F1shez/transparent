@@ -161,7 +161,7 @@ export default function App() {
   }
 
   function getPageName() {
-    const cleanPath = window.location.pathname.split("?")[0].split("#")[0];
+    const cleanPath = window.location.pathname.split("?")[0];
     return cleanPath.substring(cleanPath.lastIndexOf("/") + 1);
   }
 
