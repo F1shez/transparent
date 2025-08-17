@@ -1,7 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "crypto";
-import https from "https";
-import { readFileSync } from "fs";
 
 type Msg =
   | { type: "join"; roomId: string }
@@ -20,16 +18,7 @@ type ClientState = {
   roomId?: string;
 };
 
-const server = https.createServer({
-  cert: readFileSync("/etc/letsencrypt/live/example.com/fullchain.pem"),
-  key: readFileSync("/etc/letsencrypt/live/example.com/privkey.pem"),
-});
-
-server.listen(60764, "0.0.0.0", () => {
-  console.log("WSS server running on port 60764");
-});
-
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ host: "0.0.0.0", port: 60764 });
 
 const rooms = new Map<string, Set<WebSocket>>();
 const clients = new WeakMap<WebSocket, ClientState>();
