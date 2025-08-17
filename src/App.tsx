@@ -103,17 +103,7 @@ export default function App() {
               pushLog("DataChannel open");
               setConnected(true);
             },
-            onTrack: (event) => {
-              const stream = event.streams[0];
-              if (stream) {
-                pushLog(`Received remote stream from ${msg.from}`);
-                const audio = new Audio();
-                audio.srcObject = stream;
-                audio.autoplay = true;
-                audio.play().catch((e) => pushLog(`Audio play error: ${e}`));
-                remoteAudiosRef.current.set(msg.from, audio);
-              }
-            },
+            onTrack: (event) => handleTrack(msg.from, event),
             onSignalingStateChange: (s) => pushLog(`Signaling: ${s}`),
           });
           peersRef.current.set(msg.from, peer);
@@ -217,8 +207,8 @@ export default function App() {
   }
 
   async function startVoice() {
-    if (!isMain || localStream) {
-      pushLog("Voice already started or not main");
+    if (localStream) {
+      pushLog("Voice already started");
       return;
     }
     try {
@@ -253,6 +243,7 @@ export default function App() {
   }
 
   async function handleData(peerId: string, data: string) {
+    debugger
     try {
       const json = JSON.parse(data);
       setMessages((m) => [...m, `${json.from}: ${json.text}`]);
@@ -272,6 +263,38 @@ export default function App() {
       }
     } catch (e) {
       console.error("Invalid message data:", e);
+    }
+  }
+
+  async function handleTrack(peerId: string, event: any) {
+    console.log('handleTrack called with:', { peerId, event });
+    debugger
+    const stream = event.streams[0];
+    if (stream) {
+      pushLog(`Received remote stream from ${peerId}`);
+      const audio = new Audio();
+      audio.srcObject = stream;
+      audio.autoplay = true;
+      audio.play().catch((e) => pushLog(`Audio play error: ${e}`));
+      remoteAudiosRef.current.set(peerId, audio);
+      if (isMain) {
+        debugger
+        // startVoice();
+        // const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // setLocalStream(stream);
+        // pushLog("Audio stream acquired");
+        // // Добавляем треки в все существующие peer connections (и renegotiate, если нужно)
+        // peersRef.current.forEach((peer, peerId) => {
+        //   if (!peer) return;
+        //   stream.getTracks().forEach((track) => {
+        //     peer.pc.addTrack(track, stream);
+        //   });
+        //   pushLog(`Added audio track to peer ${peerId}`);
+
+        //   // Renegotiate: Создаем новый offer и отправляем
+        //   renegotiate(peerId);
+        // });
+      }
     }
   }
 
@@ -306,11 +329,9 @@ export default function App() {
               </li>)
             }
           </>}
-          {isMain && (
-            <button onClick={startVoice} disabled={!!localStream}>
-              Start Voice
-            </button>
-          )}
+          <button disabled={!connected || !!localStream} onClick={startVoice}>
+            Start Voice
+          </button>
           <div style={{ marginTop: 16, padding: 12, border: "1px solid #ddd" }}>
             <div>
               <input
