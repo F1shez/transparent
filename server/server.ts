@@ -18,7 +18,7 @@ type ClientState = {
   roomId?: string;
 };
 
-const wss = new WebSocketServer({ port: 3001 });
+const wss = new WebSocketServer({ port: 60763 });
 
 const rooms = new Map<string, Set<WebSocket>>();
 const clients = new WeakMap<WebSocket, ClientState>();
