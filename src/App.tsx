@@ -34,7 +34,7 @@ export default function App() {
   const joinedRef = useRef(false);
 
   useEffect(() => {
-    const ws = new WebSocket("wss://notahero.ru:60764");
+    const ws = new WebSocket("wss://notahero.ru/ws/");
     wsRef.current = ws;
 
     ws.onopen = () => {
