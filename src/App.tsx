@@ -34,7 +34,7 @@ export default function App() {
   const joinedRef = useRef(false);
 
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:3001");
+    const ws = new WebSocket("ws://213.176.112.194:60764");
     wsRef.current = ws;
 
     ws.onopen = () => {
