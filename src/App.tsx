@@ -161,8 +161,8 @@ export default function App() {
   }
 
   function getPageName() {
-    const cleanPath = window.location.pathname.split("?")[0];
-    return cleanPath.substring(cleanPath.lastIndexOf("/") + 1);
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('roomId');
   }
 
   async function startMessage(targetId: string) {
