@@ -38,7 +38,7 @@ export function createPeer(initiator: boolean, handlers: PeerHandlers) {
     channel.onmessage = (ev) => handlers.onData(ev.data as string);
   };
 
-  pc.onicecandidate = (e) => {
+  pc.onicecandidate = () => {
     // Отправка кандидата происходит снаружи, здесь только сбор
   };
 
