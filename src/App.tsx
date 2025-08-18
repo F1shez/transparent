@@ -6,10 +6,15 @@ import toast, { Toaster } from "react-hot-toast";
 
 type ServerMsg =
   | { type: "joined"; id: string; roomId: string; role: "main" | "peer" }
-  | { type: "peer-joined"; id: string }
+  | { type: "peer-joined"; id: string, userName: string }
   | { type: "peer-left"; id: string }
-  | { type: "signal"; from: string; payload: SignalEnvelope }
+  | { type: "signal"; from: string; userName: string; payload: SignalEnvelope }
   | { type: "main-changed"; id: string };
+
+interface user {
+  id: string;
+  name: string;
+}
 
 export default function App() {
   const { pushLog, Logs } = useLogs();
@@ -24,7 +29,7 @@ export default function App() {
   );
   const [isMain, setIsMain] = useState(false);
   const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
-  const [usersOnline, setUsersOnline] = useState<string[]>([]);
+  const [usersOnline, setUsersOnline] = useState<user[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());  // Для хранения <audio> для каждого peer
 
@@ -36,7 +41,8 @@ export default function App() {
   const joinedRef = useRef(false);
 
   useEffect(() => {
-    const ws = new WebSocket("wss://notahero.ru/ws/");
+    const urlWs = import.meta.env.VITE_URL_WS || prompt("Enter URL WebSocket: ");
+    const ws = new WebSocket(urlWs);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -71,6 +77,7 @@ export default function App() {
       if (msg.type === "peer-joined") {
         pushLog(`Peer joined: ${msg.id}.`);
         setHaveUserWaitConnection(prev => [...prev, msg.id]);
+        setUsersOnline(prev => [...prev, { id: msg.id, name: msg.userName }]);
         return;
       }
 
@@ -90,16 +97,16 @@ export default function App() {
           }
         }
         setHaveUserWaitConnection(prev => [...prev.filter(id => id !== msg.id)]);
-        setUsersOnline(prev => [...prev.filter(id => id !== msg.id)]);
+        setUsersOnline(prev => [...prev.filter(user => user.id !== msg.id)]);
         setConnected(false);
         return;
       }
 
       if (msg.type === "signal" && myIdRef.current) {
         const payload = msg.payload;
-
         // Create peer if not exist
         if (!peersRef.current.has(msg.from)) {
+          setUsersOnline(prev => [...prev, { id: msg.from, name: msg.userName }]);
           const peer = createPeer(false, {
             onData: (text) => handleData(msg.from, text),
             onOpen: () => {
@@ -170,7 +177,6 @@ export default function App() {
     }
 
     setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
-    setUsersOnline(prev => [...prev, targetId]);
 
     const peer = createPeer(true, {
       onData: (text) => handleData(targetId, text),
@@ -329,6 +335,11 @@ export default function App() {
 
       <div style={{ display: "flex", gap: 16 }}>
         <div style={{ flex: 1 }}>
+
+          {haveUserWaitConnection.length === 0 && usersOnline.length === 0 && <>
+            Ожидание пользователей...
+          </>}
+
           {haveUserWaitConnection.length > 0 && isMain && <>
             Запрос на подключение:
             {haveUserWaitConnection.map((userId, index) =>
@@ -338,11 +349,11 @@ export default function App() {
             }
           </>}
 
-          {usersOnline.length > 0 && isMain && <>
+          {usersOnline.length > 0 && <>
             Пользователи онлайн:
             {usersOnline.map((userId, index) =>
               <li>
-                <ul>{index}:{userId}</ul>
+                <ul>{index}:{userId.name}</ul>
               </li>)
             }
           </>}
