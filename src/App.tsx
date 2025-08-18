@@ -184,16 +184,7 @@ export default function App() {
         pushLog("DataChannel open");
         setConnected(true);
       },
-      onTrack: (event) => {
-        const stream = event.streams[0];
-        if (stream) {
-          pushLog(`Received remote stream from ${targetId}`);
-          const audio = new Audio();
-          audio.srcObject = stream;
-          audio.autoplay = true;
-          remoteAudiosRef.current.set(targetId, audio);
-        }
-      },
+      onTrack: (event) => handleTrack(targetId, event),
       onSignalingStateChange: (s) => pushLog(`Signaling: ${s}`),
     });
 
@@ -238,7 +229,7 @@ export default function App() {
         // Renegotiate: Создаем новый offer и отправляем
         renegotiate(peerId);
       });
-
+      //TODO remove this?
       remoteAudiosRef.current.forEach((audio, peerId) => {
         audio.play().catch((e) => pushLog(`Deferred audio play error (${peerId}): ${e}`));
       });
@@ -281,13 +272,14 @@ export default function App() {
   }
 
   async function handleTrack(peerId: string, event: any) {
+    debugger
     console.log('handleTrack called with:', { peerId, event });
     const stream = event.streams[0];
     if (stream) {
       pushLog(`Received remote stream from ${peerId}`);
       const audio = new Audio();
       audio.srcObject = stream;
-      audio.autoplay = true;
+      audio.autoplay = false;
       audio.play().catch((e) => pushLog(`Audio play error: ${e}`));
       remoteAudiosRef.current.set(peerId, audio);
       if (isMain) {
@@ -295,17 +287,17 @@ export default function App() {
         // const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         // setLocalStream(stream);
         // pushLog("Audio stream acquired");
-        // // Добавляем треки в все существующие peer connections (и renegotiate, если нужно)
-        // peersRef.current.forEach((peer, peerId) => {
-        //   if (!peer) return;
-        //   stream.getTracks().forEach((track) => {
-        //     peer.pc.addTrack(track, stream);
-        //   });
-        //   pushLog(`Added audio track to peer ${peerId}`);
+        // Добавляем треки в все существующие peer connections (и renegotiate, если нужно)
+        peersRef.current.forEach((peer, peerId) => {
+          if (!peer) return;
+          stream.getTracks().forEach((track: any) => {
+            peer.pc.addTrack(track, stream);
+          });
+          pushLog(`Added audio track to peer ${peerId}`);
 
-        //   // Renegotiate: Создаем новый offer и отправляем
-        //   renegotiate(peerId);
-        // });
+          // Renegotiate: Создаем новый offer и отправляем
+          renegotiate(peerId);
+        });
       }
     }
   }
