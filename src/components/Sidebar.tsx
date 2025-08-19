@@ -1,4 +1,4 @@
-import { Check, Copy, Crown, Github, Mic, MicOff, Phone, PhoneOff, Users, X } from "lucide-react";
+import { Check, Copy, Crown, Mic, MicOff, Phone, PhoneOff, Users, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 import type { user } from "../App";

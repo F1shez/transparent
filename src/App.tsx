@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPeer, type SignalEnvelope } from "./lib/webrtc";
 import randomString from "crypto-random-string";
 import { useLogs } from "./components/Logs";
-import toast, { Toaster } from "react-hot-toast";
+import { Toaster } from "react-hot-toast";
 import { Sidebar } from "./components/Sidebar";
 import { MainChatArea } from "./components/MainChatArea";
 
