@@ -3,18 +3,20 @@ import { createPeer, type SignalEnvelope } from "./lib/webrtc";
 import randomString from "crypto-random-string";
 import { useLogs } from "./components/Logs";
 import toast, { Toaster } from "react-hot-toast";
+import { Sidebar } from "./components/Sidebar";
+import { MainChatArea } from "./components/MainChatArea";
+
+export interface user {
+  id: string;
+  userName: string;
+}
 
 type ServerMsg =
-  | { type: "joined"; id: string; roomId: string; role: "main" | "peer" }
+  | { type: "joined"; id: string; roomId: string; userName: string; role: "main" | "peer", users?: user[] }
   | { type: "peer-joined"; id: string, userName: string }
   | { type: "peer-left"; id: string }
   | { type: "signal"; from: string; userName: string; payload: SignalEnvelope }
   | { type: "main-changed"; id: string };
-
-interface user {
-  id: string;
-  name: string;
-}
 
 export default function App() {
   const { pushLog, Logs } = useLogs();
@@ -29,7 +31,7 @@ export default function App() {
   );
   const [isMain, setIsMain] = useState(false);
   const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
-  const [usersOnline, setUsersOnline] = useState<user[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<user[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());  // Для хранения <audio> для каждого peer
 
@@ -38,6 +40,7 @@ export default function App() {
   const peersRef = useRef<Map<string, ReturnType<typeof createPeer> | null>>(new Map());
 
   const myIdRef = useRef<string | null>(null);
+  const myNameRef = useRef<string | null>(null);
   const joinedRef = useRef(false);
 
   useEffect(() => {
@@ -63,8 +66,16 @@ export default function App() {
       if (msg.type === "joined") {
         pushLog(`Joined room ${msg.roomId} as ${msg.id}, role=${msg.role}`);
         myIdRef.current = msg.id;
+        myNameRef.current = msg.userName;
         joinedRef.current = true;
         setIsMain(msg.role === "main");
+
+        myNameRef.current = msg.userName;
+
+        if (msg.users) {
+          setOnlineUsers(msg.users);
+        }
+
         return;
       }
 
@@ -77,7 +88,7 @@ export default function App() {
       if (msg.type === "peer-joined") {
         pushLog(`Peer joined: ${msg.id}.`);
         setHaveUserWaitConnection(prev => [...prev, msg.id]);
-        setUsersOnline(prev => [...prev, { id: msg.id, name: msg.userName }]);
+        setOnlineUsers(prev => [...prev, { id: msg.id, userName: msg.userName }]);
         return;
       }
 
@@ -97,7 +108,7 @@ export default function App() {
           }
         }
         setHaveUserWaitConnection(prev => [...prev.filter(id => id !== msg.id)]);
-        setUsersOnline(prev => [...prev.filter(user => user.id !== msg.id)]);
+        setOnlineUsers(prev => [...prev.filter(user => user.id !== msg.id)]);
         setConnected(false);
         return;
       }
@@ -106,7 +117,7 @@ export default function App() {
         const payload = msg.payload;
         // Create peer if not exist
         if (!peersRef.current.has(msg.from)) {
-          setUsersOnline(prev => [...prev, { id: msg.from, name: msg.userName }]);
+          setOnlineUsers(prev => [...prev, { id: msg.from, userName: msg.userName }]);
           const peer = createPeer(false, {
             onData: (text) => handleData(msg.from, text),
             onOpen: () => {
@@ -184,16 +195,7 @@ export default function App() {
         pushLog("DataChannel open");
         setConnected(true);
       },
-      onTrack: (event) => {
-        const stream = event.streams[0];
-        if (stream) {
-          pushLog(`Received remote stream from ${targetId}`);
-          const audio = new Audio();
-          audio.srcObject = stream;
-          audio.autoplay = true;
-          remoteAudiosRef.current.set(targetId, audio);
-        }
-      },
+      onTrack: (event) => handleTrack(targetId, event),
       onSignalingStateChange: (s) => pushLog(`Signaling: ${s}`),
     });
 
@@ -238,7 +240,7 @@ export default function App() {
         // Renegotiate: Создаем новый offer и отправляем
         renegotiate(peerId);
       });
-
+      //TODO remove this?
       remoteAudiosRef.current.forEach((audio, peerId) => {
         audio.play().catch((e) => pushLog(`Deferred audio play error (${peerId}): ${e}`));
       });
@@ -280,32 +282,26 @@ export default function App() {
     }
   }
 
-  async function handleTrack(peerId: string, event: any) {
+  async function handleTrack(peerId: string, event: RTCTrackEvent) {
     console.log('handleTrack called with:', { peerId, event });
     const stream = event.streams[0];
     if (stream) {
       pushLog(`Received remote stream from ${peerId}`);
       const audio = new Audio();
       audio.srcObject = stream;
-      audio.autoplay = true;
+      audio.autoplay = false;
       audio.play().catch((e) => pushLog(`Audio play error: ${e}`));
       remoteAudiosRef.current.set(peerId, audio);
       if (isMain) {
-        // startVoice();
-        // const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // setLocalStream(stream);
-        // pushLog("Audio stream acquired");
-        // // Добавляем треки в все существующие peer connections (и renegotiate, если нужно)
-        // peersRef.current.forEach((peer, peerId) => {
-        //   if (!peer) return;
-        //   stream.getTracks().forEach((track) => {
-        //     peer.pc.addTrack(track, stream);
-        //   });
-        //   pushLog(`Added audio track to peer ${peerId}`);
+        peersRef.current.forEach((peer, peerId) => {
+          if (!peer) return;
+          stream.getTracks().forEach((track: any) => {
+            peer.pc.addTrack(track, stream);
+          });
+          pushLog(`Added audio track to peer ${peerId}`);
 
-        //   // Renegotiate: Создаем новый offer и отправляем
-        //   renegotiate(peerId);
-        // });
+          renegotiate(peerId);
+        });
       }
     }
   }
@@ -327,61 +323,25 @@ export default function App() {
   }
 
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
-      <Toaster />
-      <h1>P2P Messenger</h1>
-      <button onClick={() => { navigator.clipboard.writeText(window.location.href.split('?')[0] + "?roomId=" + roomId); toast.success('Room id copied to clipboard!') }}>Room id: {roomId}</button>
-      <div>Role: {isMain ? "Main" : "Peer"}</div>
-
-      <div style={{ display: "flex", gap: 16 }}>
-        <div style={{ flex: 1 }}>
-
-          {haveUserWaitConnection.length === 0 && usersOnline.length === 0 && <>
-            Ожидание пользователей...
-          </>}
-
-          {haveUserWaitConnection.length > 0 && isMain && <>
-            Запрос на подключение:
-            {haveUserWaitConnection.map((userId, index) =>
-              <li>
-                <button onClick={() => startMessage(userId)}>{index}: Разрешить подключение {userId}</button>
-              </li>)
-            }
-          </>}
-
-          {usersOnline.length > 0 && <>
-            Пользователи онлайн:
-            {usersOnline.map((userId, index) =>
-              <li>
-                <ul>{index}:{userId.name}</ul>
-              </li>)
-            }
-          </>}
-          <button disabled={!connected || !!localStream} onClick={startVoice}>
-            Start Voice
-          </button>
-          <div style={{ marginTop: 16, padding: 12, border: "1px solid #ddd" }}>
-            <div>
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Message…"
-                style={{ width: "70%" }}
-              />
-              <button onClick={sendMessage} disabled={!connected || !input}>
-                Send
-              </button>
-            </div>
-
-            <h3>Messages</h3>
-            {messages.map((m, i) => (
-              <div key={i}>{m}</div>
-            ))}
-          </div>
-        </div>
-
-        <Logs />
+      <div className="flex w-screen h-screen bg-[#36393f]">
+        <Toaster />
+        {myIdRef.current
+          && myNameRef.current
+          && <Sidebar
+            connected={connected}
+            startVoice={startVoice}
+            acceptUser={startMessage}
+            rejectUser={(id: string) => { console.log("reject" + id) }}
+            selfId={myIdRef.current}
+            selfName={myNameRef.current}
+            haveUserWaitConnection={haveUserWaitConnection}
+            localStream={localStream !== null}
+            roomId={roomId}
+            onlineUsers={onlineUsers}
+            isMain={isMain}
+          />}
+        <MainChatArea messages={messages} sendMessage={sendMessage} />
+        <div className="absolute top-1 right-1 z-50"><Logs /></div>
       </div>
-    </div>
   );
 }
