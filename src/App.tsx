@@ -5,6 +5,9 @@ import { useLogs } from "./components/Logs";
 import { Toaster } from "react-hot-toast";
 import { Sidebar } from "./components/Sidebar";
 import { MainChatArea } from "./components/MainChatArea";
+import { Sheet, SheetContent, SheetDescription, SheetTrigger } from "./components/ui/sheet";
+import { Menu } from "lucide-react";
+import { DialogTitle } from "./components/ui/dialog";
 
 export interface user {
   id: string;
@@ -21,7 +24,6 @@ type ServerMsg =
 export default function App() {
   const { pushLog, Logs } = useLogs();
   const [messages, setMessages] = useState<string[]>([]);
-  const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [roomId] = useState(
     getPageName() ||
@@ -117,7 +119,6 @@ export default function App() {
         const payload = msg.payload;
         // Create peer if not exist
         if (!peersRef.current.has(msg.from)) {
-          setOnlineUsers(prev => [...prev, { id: msg.from, userName: msg.userName }]);
           const peer = createPeer(false, {
             onData: (text) => handleData(msg.from, text),
             onOpen: () => {
@@ -262,7 +263,7 @@ export default function App() {
   async function handleData(peerId: string, data: string) {
     try {
       const json = JSON.parse(data);
-      setMessages((m) => [...m, `${json.from}: ${json.text}`]);
+      setMessages((m) => [...m, `${json.userName} (${json.from}): ${json.text}`]);
 
       if (isMain) {
         // Forward to all other peers
@@ -306,16 +307,15 @@ export default function App() {
     }
   }
 
-  async function sendMessage() {
+  async function sendMessage(message: string) {
     if (!myIdRef.current || peersRef.current.size === 0) return;
-    const msg = { from: myIdRef.current, text: input };
+    const msg = { from: myIdRef.current, userName: myNameRef.current, text: message };
     const json = JSON.stringify(msg);
     peersRef.current.forEach((peer) => {
       if (!peer) return;
       try {
         peer.channel.send(json);
-        setMessages((m) => [...m, `Me (${myIdRef.current}): ${input}`]);
-        setInput("");
+        setMessages((m) => [...m, `Me: ${message}`]);
       } catch (e) {
         console.error(e);
       }
@@ -323,25 +323,57 @@ export default function App() {
   }
 
   return (
-      <div className="flex w-screen h-screen bg-[#36393f]">
-        <Toaster />
-        {myIdRef.current
-          && myNameRef.current
-          && <Sidebar
-            connected={connected}
-            startVoice={startVoice}
-            acceptUser={startMessage}
-            rejectUser={(id: string) => { console.log("reject" + id) }}
-            selfId={myIdRef.current}
-            selfName={myNameRef.current}
-            haveUserWaitConnection={haveUserWaitConnection}
-            localStream={localStream !== null}
-            roomId={roomId}
-            onlineUsers={onlineUsers}
-            isMain={isMain}
-          />}
-        <MainChatArea messages={messages} sendMessage={sendMessage} />
-        <div className="absolute top-1 right-1 z-50"><Logs /></div>
+    <div className="flex w-screen h-screen bg-[#36393f]">
+      <Toaster />
+      {myIdRef.current
+        && myNameRef.current
+        && <Sidebar
+          className="hidden lg:block"
+          connected={connected}
+          startVoice={startVoice}
+          acceptUser={startMessage}
+          rejectUser={(id: string) => { console.log("reject" + id) }}
+          selfId={myIdRef.current}
+          selfName={myNameRef.current}
+          haveUserWaitConnection={haveUserWaitConnection}
+          localStream={localStream !== null}
+          roomId={roomId}
+          onlineUsers={onlineUsers}
+          isMain={isMain}
+        />}
+
+      <div className="xl:hidden absolute top-2 left-2 z-50">
+        <Sheet>
+          <DialogTitle>
+            <SheetTrigger asChild>
+              <button className="p-2 rounded-xl bg-[#202225] text-white shadow-lg">
+                <Menu className="h-6 w-6" />
+              </button>
+            </SheetTrigger>
+          </DialogTitle>
+          <SheetContent side="left" className="bg-[#2f3136] p-0 w-[280px]">
+            <SheetDescription></SheetDescription>
+            {myIdRef.current && myNameRef.current && (
+              <Sidebar
+                className=""
+                connected={connected}
+                startVoice={startVoice}
+                acceptUser={startMessage}
+                rejectUser={(id: string) => console.log("reject " + id)}
+                selfId={myIdRef.current}
+                selfName={myNameRef.current}
+                haveUserWaitConnection={haveUserWaitConnection}
+                localStream={localStream !== null}
+                roomId={roomId}
+                onlineUsers={onlineUsers}
+                isMain={isMain}
+              />
+            )}
+          </SheetContent>
+        </Sheet>
       </div>
+      <MainChatArea connected={connected} messages={messages} sendMessage={sendMessage} />
+      <div className="invisible xl:visible absolute top-1 right-1 z-50"><Logs /></div>
+    </div>
   );
 }

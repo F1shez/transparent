@@ -4,7 +4,8 @@ import { ScrollArea } from "./ui/scroll-area";
 import type { user } from "../App";
 import toast from "react-hot-toast";
 
-interface SidebarProps {
+interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
+    className?: string;
     connected: boolean;
     selfId: string;
     selfName: string;
@@ -20,9 +21,9 @@ interface SidebarProps {
 
 export function Sidebar(props: SidebarProps) {
     return (
-        <>
+        <div className={props.className}>
             {/* Sidebar */}
-            <div className="w-60 bg-[#2f3136] flex flex-col">
+            <div className="w-60 bg-[#2f3136] flex flex-col h-screen">
                 {/* Logo Header */}
                 <div className="p-4 border-b border-[#202225]">
                     <span className="text-xl text-white line-through decoration-pink-500">transparent</span>
@@ -156,6 +157,6 @@ export function Sidebar(props: SidebarProps) {
                     <a href="https://github.com/F1shez" target="_blank" rel="noopener noreferrer" className="w-full text-center">by notahero</a>
                 </div>
             </div>
-        </>
+        </div>
     );
 }
