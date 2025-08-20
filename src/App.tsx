@@ -167,6 +167,13 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (localStream)
+      remoteAudiosRef.current.forEach((audio, peerId) => {
+        audio.play().catch((e) => pushLog(`Deferred audio play error (${peerId}): ${e}`));
+      });
+  }, [localStream, pushLog, remoteAudiosRef])
+
 
   function sendSignal(to: string, payload: SignalEnvelope) {
     wsRef.current?.send(JSON.stringify({ type: "signal", to, payload }));
@@ -177,7 +184,7 @@ export default function App() {
     return urlParams.get('roomId');
   }
 
-  async function startMessage(targetId: string) {
+  async function acceptUser(targetId: string) {
     if (!joinedRef.current || !myIdRef.current) {
       pushLog("Не присоединились к комнате еще");
       return;
@@ -220,6 +227,10 @@ export default function App() {
     pushLog("Offer sent");
   }
 
+  async function rejectUser(targetId: string) {
+    setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
+  }
+
   async function startVoice() {
     if (localStream) {
       pushLog("Voice already started");
@@ -241,18 +252,57 @@ export default function App() {
         // Renegotiate: Создаем новый offer и отправляем
         renegotiate(peerId);
       });
-      //TODO remove this?
-      remoteAudiosRef.current.forEach((audio, peerId) => {
-        audio.play().catch((e) => pushLog(`Deferred audio play error (${peerId}): ${e}`));
-      });
     } catch (e) {
       pushLog(`Error getting audio: ${e}`);
     }
   }
 
+  async function stopVoice() {
+    if (!localStream) {
+      pushLog("Voice not started");
+      return;
+    }
+    
+    const stream = localStream;
+    stream.getTracks().forEach((track) => {
+      track.stop();
+    })
+    setLocalStream(null);
+    pushLog("Local audio stopped");
+
+    // Удаляем треки из всех peer connections
+    peersRef.current.forEach((peer, peerId) => {
+      if (!peer) return;
+      peer.pc.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "audio") {
+          peer.pc.removeTrack(sender);
+          pushLog(`Removed audio track from peer ${peerId}`);
+        }
+      });
+
+      // Ренеготиация, чтобы все знали, что аудио больше нет
+      renegotiate(peerId);
+    });
+
+    // Останавливаем все удалённые аудио (чтобы я никого не слышал)
+    remoteAudiosRef.current.forEach((audio, peerId) => {
+      if (audio.srcObject) {
+        (audio.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
+      }
+      audio.pause();
+      pushLog(`Stopped remote audio from ${peerId}`);
+    });
+  }
+
   async function renegotiate(targetId: string) {
     const peer = peersRef.current.get(targetId);
     if (!peer) return;
+
+    // разрешаем оффер только если idle или stable
+    if (peer.pc.signalingState !== "stable") {
+      pushLog(`Skip renegotiation for ${targetId}, state=${peer.pc.signalingState}`);
+      return;
+    }
 
     const offer = await peer.pc.createOffer();
     await peer.pc.setLocalDescription(offer);
@@ -283,25 +333,25 @@ export default function App() {
     }
   }
 
-  async function handleTrack(peerId: string, event: RTCTrackEvent) {
-    console.log('handleTrack called with:', { peerId, event });
+  async function handleTrack(fromId: string, event: RTCTrackEvent) {
+    console.log('handleTrack called with:', { fromId, event });
     const stream = event.streams[0];
     if (stream) {
-      pushLog(`Received remote stream from ${peerId}`);
+      pushLog(`Received remote stream from ${fromId}`);
       const audio = new Audio();
       audio.srcObject = stream;
       audio.autoplay = false;
-      audio.play().catch((e) => pushLog(`Audio play error: ${e}`));
-      remoteAudiosRef.current.set(peerId, audio);
+      remoteAudiosRef.current.set(fromId, audio);
       if (isMain) {
-        peersRef.current.forEach((peer, peerId) => {
+        peersRef.current.forEach((peer, id) => {
           if (!peer) return;
-          stream.getTracks().forEach((track: any) => {
+          if (fromId === id) return;
+          stream.getTracks().forEach((track: MediaStreamTrack) => {
             peer.pc.addTrack(track, stream);
           });
-          pushLog(`Added audio track to peer ${peerId}`);
+          pushLog(`Added audio track to peer ${id}`);
 
-          renegotiate(peerId);
+          renegotiate(id);
         });
       }
     }
@@ -322,27 +372,36 @@ export default function App() {
     });
   }
 
+  const sidebar = (
+    <Sidebar
+      className=""
+      connected={connected}
+      startVoice={startVoice}
+      stopVoice={stopVoice}
+      acceptUser={acceptUser}
+      rejectUser={rejectUser}
+      selfId={myIdRef.current!}
+      selfName={myNameRef.current!}
+      haveUserWaitConnection={haveUserWaitConnection}
+      localStream={localStream !== null}
+      roomId={roomId}
+      onlineUsers={onlineUsers}
+      isMain={isMain}
+    />
+  );
+
   return (
     <div className="flex w-screen h-screen bg-[#36393f]">
       <Toaster />
       {myIdRef.current
         && myNameRef.current
-        && <Sidebar
-          className="hidden lg:block"
-          connected={connected}
-          startVoice={startVoice}
-          acceptUser={startMessage}
-          rejectUser={(id: string) => { console.log("reject" + id) }}
-          selfId={myIdRef.current}
-          selfName={myNameRef.current}
-          haveUserWaitConnection={haveUserWaitConnection}
-          localStream={localStream !== null}
-          roomId={roomId}
-          onlineUsers={onlineUsers}
-          isMain={isMain}
-        />}
+        &&
+        <div className="hidden lg:block">
+          {sidebar}
+        </div>
+      }
 
-      <div className="xl:hidden absolute top-2 left-2 z-50">
+      <div className="lg:hidden absolute top-2 left-2 z-50">
         <Sheet>
           <DialogTitle>
             <SheetTrigger asChild>
@@ -353,22 +412,7 @@ export default function App() {
           </DialogTitle>
           <SheetContent side="left" className="bg-[#2f3136] p-0 w-[280px]">
             <SheetDescription></SheetDescription>
-            {myIdRef.current && myNameRef.current && (
-              <Sidebar
-                className=""
-                connected={connected}
-                startVoice={startVoice}
-                acceptUser={startMessage}
-                rejectUser={(id: string) => console.log("reject " + id)}
-                selfId={myIdRef.current}
-                selfName={myNameRef.current}
-                haveUserWaitConnection={haveUserWaitConnection}
-                localStream={localStream !== null}
-                roomId={roomId}
-                onlineUsers={onlineUsers}
-                isMain={isMain}
-              />
-            )}
+            {myIdRef.current && myNameRef.current && <div>{sidebar}</div>}
           </SheetContent>
         </Sheet>
       </div>

@@ -5,7 +5,6 @@ import type { user } from "../App";
 import toast from "react-hot-toast";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
-    className?: string;
     connected: boolean;
     selfId: string;
     selfName: string;
@@ -17,11 +16,12 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
     acceptUser: (userId: string) => void;
     rejectUser: (userId: string) => void;
     startVoice: () => void;
+    stopVoice: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
     return (
-        <div className={props.className}>
+        <div>
             {/* Sidebar */}
             <div className="w-60 bg-[#2f3136] flex flex-col h-screen">
                 {/* Logo Header */}
@@ -85,7 +85,7 @@ export function Sidebar(props: SidebarProps) {
                             <Button
                                 size="sm"
                                 variant={props.localStream ? "default" : "secondary"}
-                                onClick={() => { }}
+                                onClick={props.stopVoice}
                                 className="flex-1 bg-[#5865f2] hover:bg-[#4752c4] text-white"
                             >
                                 <PhoneOff className="h-4 w-4" />
@@ -118,7 +118,7 @@ export function Sidebar(props: SidebarProps) {
                         <ScrollArea className="max-h-32">
                             {props.onlineUsers.map((user) => (
                                 <div key={user.id} className="flex items-center justify-between mb-2 text-sm">
-                                    <span className="text-[#b9bbbe]">{user.userName}</span>
+                                    <span className="text-[#b9bbbe]" title={user.id}>{user.userName}</span>
                                     <div className="flex gap-1">
                                         <Button
                                             size="sm"
@@ -155,7 +155,7 @@ export function Sidebar(props: SidebarProps) {
                     </h3>
                     <ScrollArea className="h-full">
                         <div className="flex items-center mb-2 p-1 rounded hover:bg-[#40444b]">
-                            <span className="text-[#b9bbbe] text-sm flex items-center">
+                            <span title={props.selfId} className="text-[#b9bbbe] text-sm flex items-center">
                                 <div className="w-2 h-2 bg-[#3ba55c] rounded-full mr-3"></div>
                                 {props.selfName}
                                 <span className="text-[#72767d] ml-1">(you)</span>
@@ -165,7 +165,7 @@ export function Sidebar(props: SidebarProps) {
                         {props.onlineUsers.map((user, index) => (
                             <div key={user.id} className="flex items-center mb-2 p-1 rounded hover:bg-[#40444b]">
                                 <div className="w-2 h-2 bg-[#3ba55c] rounded-full mr-3"></div>
-                                <span className="text-[#b9bbbe] text-sm flex items-center">
+                                <span title={user.id} className="text-[#b9bbbe] text-sm flex items-center">
                                     {user.userName}
                                     {index === 0 && !props.isMain && <Crown className="h-3 w-3 ml-1 text-[#faa61a]" />}
                                 </span>
