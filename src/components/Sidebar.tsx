@@ -1,4 +1,4 @@
-import { Check, Copy, Crown, Mic, MicOff, Phone, PhoneOff, Users, X } from "lucide-react";
+import { Check, Copy, Crown, Mic, MicOff, Phone, PhoneOff, Plus, Settings, Users, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 import type { user } from "../App";
@@ -43,6 +43,27 @@ export function Sidebar(props: SidebarProps) {
                     </div>
                     <div className="text-[#72767d] text-xs font-mono break-all">
                         {props.roomId}
+                    </div>
+
+                    <div className="flex gap-2 mt-2">
+                        <Button
+                            onClick={() => { window.location.href = window.location.href.split('?')[0] }}
+                            size="sm"
+                            className="flex-1 bg-[#5865f2] hover:bg-[#4752c4] text-white text-xs h-7"
+                        >
+                            <Plus className="h-3 w-3 mr-1" />
+                            New Room
+                        </Button>
+                        <Button
+                            disabled={true}
+                            onClick={() => { }}
+                            size="sm"
+                            variant="secondary"
+                            className="flex-1 bg-[#40444b] hover:bg-[#4a4e55] text-[#dcddde] text-xs h-7"
+                        >
+                            <Settings className="h-3 w-3 mr-1" />
+                            Config
+                        </Button>
                     </div>
                 </div>
 
