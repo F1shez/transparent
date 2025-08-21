@@ -417,7 +417,7 @@ export default function App() {
         </Sheet>
       </div>
       <MainChatArea connected={connected} messages={messages} sendMessage={sendMessage} />
-      <div className="invisible xl:visible absolute top-1 right-1 z-50"><Logs /></div>
+      {import.meta.env.VITE_environment && <div className="invisible xl:visible absolute top-1 right-1 z-50"><Logs /></div>}
     </div>
   );
 }
