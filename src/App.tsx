@@ -2,24 +2,28 @@ import { useEffect, useRef, useState } from "react";
 import { createPeer, type SignalEnvelope } from "./lib/webrtc";
 import randomString from "crypto-random-string";
 import { useLogs } from "./components/Logs";
-import toast, { Toaster } from "react-hot-toast";
+import { Toaster } from "react-hot-toast";
+import { Sidebar } from "./components/Sidebar";
+import { MainChatArea } from "./components/MainChatArea";
+import { Sheet, SheetContent, SheetDescription, SheetTrigger } from "./components/ui/sheet";
+import { Menu } from "lucide-react";
+import { DialogTitle } from "./components/ui/dialog";
+
+export interface user {
+  id: string;
+  userName: string;
+}
 
 type ServerMsg =
-  | { type: "joined"; id: string; roomId: string; role: "main" | "peer" }
+  | { type: "joined"; id: string; roomId: string; userName: string; role: "main" | "peer", users?: user[] }
   | { type: "peer-joined"; id: string, userName: string }
   | { type: "peer-left"; id: string }
   | { type: "signal"; from: string; userName: string; payload: SignalEnvelope }
   | { type: "main-changed"; id: string };
 
-interface user {
-  id: string;
-  name: string;
-}
-
 export default function App() {
   const { pushLog, Logs } = useLogs();
   const [messages, setMessages] = useState<string[]>([]);
-  const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [roomId] = useState(
     getPageName() ||
@@ -29,7 +33,7 @@ export default function App() {
   );
   const [isMain, setIsMain] = useState(false);
   const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
-  const [usersOnline, setUsersOnline] = useState<user[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<user[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());  // Для хранения <audio> для каждого peer
 
@@ -38,6 +42,7 @@ export default function App() {
   const peersRef = useRef<Map<string, ReturnType<typeof createPeer> | null>>(new Map());
 
   const myIdRef = useRef<string | null>(null);
+  const myNameRef = useRef<string | null>(null);
   const joinedRef = useRef(false);
 
   useEffect(() => {
@@ -63,8 +68,16 @@ export default function App() {
       if (msg.type === "joined") {
         pushLog(`Joined room ${msg.roomId} as ${msg.id}, role=${msg.role}`);
         myIdRef.current = msg.id;
+        myNameRef.current = msg.userName;
         joinedRef.current = true;
         setIsMain(msg.role === "main");
+
+        myNameRef.current = msg.userName;
+
+        if (msg.users) {
+          setOnlineUsers(msg.users);
+        }
+
         return;
       }
 
@@ -77,7 +90,7 @@ export default function App() {
       if (msg.type === "peer-joined") {
         pushLog(`Peer joined: ${msg.id}.`);
         setHaveUserWaitConnection(prev => [...prev, msg.id]);
-        setUsersOnline(prev => [...prev, { id: msg.id, name: msg.userName }]);
+        setOnlineUsers(prev => [...prev, { id: msg.id, userName: msg.userName }]);
         return;
       }
 
@@ -97,7 +110,7 @@ export default function App() {
           }
         }
         setHaveUserWaitConnection(prev => [...prev.filter(id => id !== msg.id)]);
-        setUsersOnline(prev => [...prev.filter(user => user.id !== msg.id)]);
+        setOnlineUsers(prev => [...prev.filter(user => user.id !== msg.id)]);
         setConnected(false);
         return;
       }
@@ -106,7 +119,6 @@ export default function App() {
         const payload = msg.payload;
         // Create peer if not exist
         if (!peersRef.current.has(msg.from)) {
-          setUsersOnline(prev => [...prev, { id: msg.from, name: msg.userName }]);
           const peer = createPeer(false, {
             onData: (text) => handleData(msg.from, text),
             onOpen: () => {
@@ -155,6 +167,13 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (localStream)
+      remoteAudiosRef.current.forEach((audio, peerId) => {
+        audio.play().catch((e) => pushLog(`Deferred audio play error (${peerId}): ${e}`));
+      });
+  }, [localStream, pushLog, remoteAudiosRef])
+
 
   function sendSignal(to: string, payload: SignalEnvelope) {
     wsRef.current?.send(JSON.stringify({ type: "signal", to, payload }));
@@ -165,7 +184,7 @@ export default function App() {
     return urlParams.get('roomId');
   }
 
-  async function startMessage(targetId: string) {
+  async function acceptUser(targetId: string) {
     if (!joinedRef.current || !myIdRef.current) {
       pushLog("Не присоединились к комнате еще");
       return;
@@ -208,6 +227,10 @@ export default function App() {
     pushLog("Offer sent");
   }
 
+  async function rejectUser(targetId: string) {
+    setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
+  }
+
   async function startVoice() {
     if (localStream) {
       pushLog("Voice already started");
@@ -229,18 +252,57 @@ export default function App() {
         // Renegotiate: Создаем новый offer и отправляем
         renegotiate(peerId);
       });
-      //TODO remove this?
-      remoteAudiosRef.current.forEach((audio, peerId) => {
-        audio.play().catch((e) => pushLog(`Deferred audio play error (${peerId}): ${e}`));
-      });
     } catch (e) {
       pushLog(`Error getting audio: ${e}`);
     }
   }
 
+  async function stopVoice() {
+    if (!localStream) {
+      pushLog("Voice not started");
+      return;
+    }
+    
+    const stream = localStream;
+    stream.getTracks().forEach((track) => {
+      track.stop();
+    })
+    setLocalStream(null);
+    pushLog("Local audio stopped");
+
+    // Удаляем треки из всех peer connections
+    peersRef.current.forEach((peer, peerId) => {
+      if (!peer) return;
+      peer.pc.getSenders().forEach((sender) => {
+        if (sender.track?.kind === "audio") {
+          peer.pc.removeTrack(sender);
+          pushLog(`Removed audio track from peer ${peerId}`);
+        }
+      });
+
+      // Ренеготиация, чтобы все знали, что аудио больше нет
+      renegotiate(peerId);
+    });
+
+    // Останавливаем все удалённые аудио (чтобы я никого не слышал)
+    remoteAudiosRef.current.forEach((audio, peerId) => {
+      if (audio.srcObject) {
+        (audio.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
+      }
+      audio.pause();
+      pushLog(`Stopped remote audio from ${peerId}`);
+    });
+  }
+
   async function renegotiate(targetId: string) {
     const peer = peersRef.current.get(targetId);
     if (!peer) return;
+
+    // разрешаем оффер только если idle или stable
+    if (peer.pc.signalingState !== "stable") {
+      pushLog(`Skip renegotiation for ${targetId}, state=${peer.pc.signalingState}`);
+      return;
+    }
 
     const offer = await peer.pc.createOffer();
     await peer.pc.setLocalDescription(offer);
@@ -251,7 +313,7 @@ export default function App() {
   async function handleData(peerId: string, data: string) {
     try {
       const json = JSON.parse(data);
-      setMessages((m) => [...m, `${json.from}: ${json.text}`]);
+      setMessages((m) => [...m, `${json.userName} (${json.from}): ${json.text}`]);
 
       if (isMain) {
         // Forward to all other peers
@@ -271,109 +333,91 @@ export default function App() {
     }
   }
 
-  async function handleTrack(peerId: string, event: any) {
-    debugger
-    console.log('handleTrack called with:', { peerId, event });
+  async function handleTrack(fromId: string, event: RTCTrackEvent) {
+    console.log('handleTrack called with:', { fromId, event });
     const stream = event.streams[0];
     if (stream) {
-      pushLog(`Received remote stream from ${peerId}`);
+      pushLog(`Received remote stream from ${fromId}`);
       const audio = new Audio();
       audio.srcObject = stream;
       audio.autoplay = false;
-      audio.play().catch((e) => pushLog(`Audio play error: ${e}`));
-      remoteAudiosRef.current.set(peerId, audio);
+      remoteAudiosRef.current.set(fromId, audio);
       if (isMain) {
-        // startVoice();
-        // const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // setLocalStream(stream);
-        // pushLog("Audio stream acquired");
-        // Добавляем треки в все существующие peer connections (и renegotiate, если нужно)
-        peersRef.current.forEach((peer, peerId) => {
+        peersRef.current.forEach((peer, id) => {
           if (!peer) return;
-          stream.getTracks().forEach((track: any) => {
+          if (fromId === id) return;
+          stream.getTracks().forEach((track: MediaStreamTrack) => {
             peer.pc.addTrack(track, stream);
           });
-          pushLog(`Added audio track to peer ${peerId}`);
+          pushLog(`Added audio track to peer ${id}`);
 
-          // Renegotiate: Создаем новый offer и отправляем
-          renegotiate(peerId);
+          renegotiate(id);
         });
       }
     }
   }
 
-  async function sendMessage() {
+  async function sendMessage(message: string) {
     if (!myIdRef.current || peersRef.current.size === 0) return;
-    const msg = { from: myIdRef.current, text: input };
+    const msg = { from: myIdRef.current, userName: myNameRef.current, text: message };
     const json = JSON.stringify(msg);
     peersRef.current.forEach((peer) => {
       if (!peer) return;
       try {
         peer.channel.send(json);
-        setMessages((m) => [...m, `Me (${myIdRef.current}): ${input}`]);
-        setInput("");
+        setMessages((m) => [...m, `Me: ${message}`]);
       } catch (e) {
         console.error(e);
       }
     });
   }
 
+  const sidebar = (
+    <Sidebar
+      className=""
+      connected={connected}
+      startVoice={startVoice}
+      stopVoice={stopVoice}
+      acceptUser={acceptUser}
+      rejectUser={rejectUser}
+      selfId={myIdRef.current!}
+      selfName={myNameRef.current!}
+      haveUserWaitConnection={haveUserWaitConnection}
+      localStream={localStream !== null}
+      roomId={roomId}
+      onlineUsers={onlineUsers}
+      isMain={isMain}
+    />
+  );
+
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
+    <div className="flex w-screen h-screen bg-[#36393f]">
       <Toaster />
-      <h1>P2P Messenger</h1>
-      <button onClick={() => { navigator.clipboard.writeText(window.location.href.split('?')[0] + "?roomId=" + roomId); toast.success('Room id copied to clipboard!') }}>Room id: {roomId}</button>
-      <div>Role: {isMain ? "Main" : "Peer"}</div>
-
-      <div style={{ display: "flex", gap: 16 }}>
-        <div style={{ flex: 1 }}>
-
-          {haveUserWaitConnection.length === 0 && usersOnline.length === 0 && <>
-            Ожидание пользователей...
-          </>}
-
-          {haveUserWaitConnection.length > 0 && isMain && <>
-            Запрос на подключение:
-            {haveUserWaitConnection.map((userId, index) =>
-              <li>
-                <button onClick={() => startMessage(userId)}>{index}: Разрешить подключение {userId}</button>
-              </li>)
-            }
-          </>}
-
-          {usersOnline.length > 0 && <>
-            Пользователи онлайн:
-            {usersOnline.map((userId, index) =>
-              <li>
-                <ul>{index}:{userId.name}</ul>
-              </li>)
-            }
-          </>}
-          <button disabled={!connected || !!localStream} onClick={startVoice}>
-            Start Voice
-          </button>
-          <div style={{ marginTop: 16, padding: 12, border: "1px solid #ddd" }}>
-            <div>
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Message…"
-                style={{ width: "70%" }}
-              />
-              <button onClick={sendMessage} disabled={!connected || !input}>
-                Send
-              </button>
-            </div>
-
-            <h3>Messages</h3>
-            {messages.map((m, i) => (
-              <div key={i}>{m}</div>
-            ))}
-          </div>
+      {myIdRef.current
+        && myNameRef.current
+        &&
+        <div className="hidden lg:block">
+          {sidebar}
         </div>
+      }
 
-        <Logs />
+      <div className="lg:hidden absolute top-2 left-2 z-50">
+        <Sheet>
+          <DialogTitle>
+            <SheetTrigger asChild>
+              <button className="p-2 rounded-xl bg-[#202225] text-white shadow-lg">
+                <Menu className="h-6 w-6" />
+              </button>
+            </SheetTrigger>
+          </DialogTitle>
+          <SheetContent side="left" className="bg-[#2f3136] p-0 w-[280px]">
+            <SheetDescription></SheetDescription>
+            {myIdRef.current && myNameRef.current && <div>{sidebar}</div>}
+          </SheetContent>
+        </Sheet>
       </div>
+      <MainChatArea connected={connected} messages={messages} sendMessage={sendMessage} />
+      <div className="invisible xl:visible absolute top-1 right-1 z-50"><Logs /></div>
     </div>
   );
 }

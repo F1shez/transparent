@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "crypto";
 import { readFileSync } from "fs";
+import { user } from "../src/App";
 
 type Msg =
   | { type: "join"; roomId: string, userName: string }
@@ -8,7 +9,7 @@ type Msg =
   | { type: "ping" };
 
 type Outbound =
-  | { type: "joined"; id: string; roomId: string; role: "main" | "peer" }
+  | { type: "joined"; id: string; userName: string; roomId: string; role: "main" | "peer", users: user[] }
   | { type: "peer-joined"; id: string, userName: string }
   | { type: "peer-left"; id: string }
   | { type: "signal"; from: string; userName: string; payload: any }
@@ -81,7 +82,16 @@ wss.on("connection", (ws) => {
         role = "peer";
       }
 
-      send(ws, { type: "joined", id: state.id, roomId, role });
+      const existingUsers = [...roomSet]
+        .filter(client => client !== ws)
+        .map(client => {
+          const cs = clients.get(client);
+          return cs ? { id: cs.id, userName: cs.userName || "Anonymous" } : null;
+        })
+        .filter((u): u is { id: string; userName: string } => u !== null); // type guard
+
+      send(ws, { type: "joined", id: state.id, userName: state.userName || "Anonymous", roomId, role, users: existingUsers });
+
       broadcastToRoom(roomId, ws, { type: "peer-joined", id: state.id, userName: state.userName || "Anonymous" });
       return;
     }
