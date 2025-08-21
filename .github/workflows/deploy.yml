@@ -25,6 +25,7 @@ jobs:
         run: npm run build
         env: 
           VITE_URL_WS: ${{ vars.VITE_URL_WS }}
+          VITE_environment: production
 
       - name: Upload production-ready build files
         uses: actions/upload-artifact@v4
