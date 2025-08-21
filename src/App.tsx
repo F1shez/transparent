@@ -35,6 +35,7 @@ export default function App() {
   const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<user[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
   const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());  // Для хранения <audio> для каждого peer
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -262,7 +263,7 @@ export default function App() {
       pushLog("Voice not started");
       return;
     }
-    
+
     const stream = localStream;
     stream.getTracks().forEach((track) => {
       track.stop();
@@ -292,6 +293,18 @@ export default function App() {
       audio.pause();
       pushLog(`Stopped remote audio from ${peerId}`);
     });
+  }
+
+  function toggleMute() {
+    if (!localStream) return;
+
+    setIsMuted(!isMuted);
+
+    localStream.getAudioTracks().forEach(track => {
+      track.enabled = !!isMuted;
+    });
+
+    pushLog(!isMuted ? "Microphone muted" : "Microphone unmuted");
   }
 
   async function renegotiate(targetId: string) {
@@ -387,6 +400,8 @@ export default function App() {
       roomId={roomId}
       onlineUsers={onlineUsers}
       isMain={isMain}
+      isMuted={isMuted}
+      toggleMute={toggleMute}
     />
   );
 

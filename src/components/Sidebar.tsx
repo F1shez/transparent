@@ -17,6 +17,8 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
     rejectUser: (userId: string) => void;
     startVoice: () => void;
     stopVoice: () => void;
+    isMuted: boolean;
+    toggleMute: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -75,10 +77,10 @@ export function Sidebar(props: SidebarProps) {
                             <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => { }}
+                                onClick={props.toggleMute}
                                 className="text-red-400 hover:text-red-300 hover:bg-[#40444b] h-6 w-6 p-0"
                             >
-                                {true ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                                {props.isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                             </Button>
                         </div>
                         <div className="flex gap-2">
