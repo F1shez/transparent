@@ -253,6 +253,14 @@ export default function App() {
         // Renegotiate: Создаем новый offer и отправляем
         renegotiate(peerId);
       });
+
+      remoteAudiosRef.current.forEach((audio, peerId) => {
+        if (audio.srcObject) {
+          (audio.srcObject as MediaStream).getTracks().forEach((track) => track.enabled = true);
+        }
+        audio.play();
+        pushLog(`Stopped remote audio from ${peerId}`);
+      });
     } catch (e) {
       pushLog(`Error getting audio: ${e}`);
     }
@@ -288,7 +296,7 @@ export default function App() {
     // Останавливаем все удалённые аудио (чтобы я никого не слышал)
     remoteAudiosRef.current.forEach((audio, peerId) => {
       if (audio.srcObject) {
-        (audio.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
+        (audio.srcObject as MediaStream).getTracks().forEach((track) => track.enabled = false);
       }
       audio.pause();
       pushLog(`Stopped remote audio from ${peerId}`);
