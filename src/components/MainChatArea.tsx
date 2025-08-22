@@ -1,58 +1,53 @@
-import { Send } from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { ScrollArea } from "./ui/scroll-area";
+import { ScrollArea, ScrollBar } from "./ui/scroll-area";
+import { InputMessage } from "./InputMessage";
+import { VideoContainer } from "./VideoContainer";
 import { useState } from "react";
 
 interface MainChatAreaProps {
+    haveVideo: boolean;
     connected: boolean;
     messages: string[];
     sendMessage: (message: string) => void;
+    remoteVideosRef: Map<string, HTMLVideoElement>;
 }
 export function MainChatArea(props: MainChatAreaProps) {
-    const [input, setInput] = useState("");
+    const [fullScreenVideo, setFullScreenVideo] = useState(false);
 
-    function handleClick(){
-        setInput("");
-        props.sendMessage(input);
-    }
     return (
-        <div className="flex-1 flex flex-col bg-[#36393f]">
-            {/* Messages */}
-            <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
-                    {props.messages.map((message, index) => (
-                        <div key={index} className="group">
-                            <div className="flex items-start space-x-3">
-                                <div className="flex-1">
-                                    <p className="text-[#dcddde]">{message}</p>
-                                </div>
-                            </div>
+        <div className="flex-1 flex flex-col bg-[#36393f] max-w-full overflow-x-auto">
+
+            {/* Video */}
+            {props.haveVideo && <ScrollArea className={fullScreenVideo ? "flex-1 " : "flex-1 p-4"}>
+                <div className="flex space-x-4">
+                    {[...props.remoteVideosRef.entries()].map(([id, video]) => (
+                        <div key={id}>
+                            <VideoContainer video={video} setFullScreenVideo={setFullScreenVideo} />
                         </div>
                     ))}
                 </div>
-            </ScrollArea>
+                <ScrollBar orientation="horizontal" />
+            </ScrollArea>}
 
-            {/* Message Input */}
-            <div className="p-4 bg-[#36393f]">
-                <div className="flex space-x-2">
-                    <Input
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        placeholder="Message this room..."
-                        className="flex-1 bg-[#40444b] border-[#40444b] text-[#dcddde] placeholder-[#72767d] focus:border-[#5865f2]"
-                        onKeyPress={(e) => e.key === 'Enter' && handleClick() }
-                    />
-                    <Button
-                        disabled={!props.connected || !input}
-                        onClick={handleClick}
-                        size="sm"
-                        className="bg-[#5865f2] hover:bg-[#4752c4] text-white"
-                    >
-                        <Send className="h-4 w-4" />
-                    </Button>
-                </div>
-            </div>
-        </div>
+            {!fullScreenVideo &&
+                <>
+                    {/* Messages */}
+                    <ScrollArea className="flex-1 p-4">
+                        <div className="space-y-4">
+                            {props.messages.map((message, index) => (
+                                <div key={index} className="group">
+                                    <div className="flex items-start space-x-3">
+                                        <div className="flex-1">
+                                            <p className="text-[#dcddde]">{message}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </ScrollArea>
+
+                    {/* Message Input */}
+                    <InputMessage sendMessage={props.sendMessage} disabled={!props.connected} />
+                </>}
+        </div >
     );
 }
