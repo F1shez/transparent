@@ -1,8 +1,9 @@
-import { Check, Copy, Crown, Mic, MicOff, Phone, PhoneOff, Plus, Settings, Users, X } from "lucide-react";
+import { Check, Copy, Crown, Mic, MicOff, Phone, PhoneOff, Plus, Settings, Users, Video, VideoOff, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
 import type { user } from "../App";
 import toast from "react-hot-toast";
+import { useEffect, useState } from "react";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
     connected: boolean;
@@ -10,22 +11,40 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
     selfName: string;
     onlineUsers: user[];
     isMain: boolean;
-    localStream: boolean;
+    localStream: MediaStream | null;
     roomId: string;
     haveUserWaitConnection: string[]
     acceptUser: (userId: string) => void;
     rejectUser: (userId: string) => void;
-    startVoice: () => void;
-    stopVoice: () => void;
+    startCall: () => void;
+    stopCall: () => void;
     isMuted: boolean;
     toggleMute: () => void;
+    startVideo: () => void;
+    stopVideo: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
+    const [isVideoEnabled, setIsVideoEnabled] = useState(false);
+
+    useEffect(() => {
+        setIsVideoEnabled((props.localStream?.getVideoTracks() && props.localStream?.getVideoTracks().length > 0) !== undefined);
+    }, [])
+
+    function toggleVideo() {
+        if (props.localStream?.getVideoTracks() && props.localStream?.getVideoTracks().length > 0) {
+            setIsVideoEnabled(false);
+            props.stopVideo();
+        } else {
+            setIsVideoEnabled(true);
+            props.startVideo()
+        }
+    }
+
     return (
         <div>
             {/* Sidebar */}
-            <div className="w-60 bg-[#2f3136] flex flex-col h-screen">
+            <div className="bg-[#2f3136] flex flex-col h-screen">
                 {/* Logo Header */}
                 <div className="p-4 border-b border-[#202225]">
                     <span className="text-xl text-white line-through decoration-pink-500">transparent</span>
@@ -69,25 +88,35 @@ export function Sidebar(props: SidebarProps) {
                     </div>
                 </div>
 
-                {/* Voice Channel */}
+                {/* Voice settings */}
                 {props.localStream && (
                     <div className="p-3 bg-[#3c3f45] border-b border-[#202225]">
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-[#dcddde] text-sm">Voice Channel</span>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={props.toggleMute}
-                                className="text-red-400 hover:text-red-300 hover:bg-[#40444b] h-6 w-6 p-0"
-                            >
-                                {props.isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                            </Button>
+                            <span className="text-[#dcddde] text-sm">Call Settings</span>
+                            <div>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={props.toggleMute}
+                                    className="hover:text-red-300 hover:bg-[#40444b] h-6 w-6 p-0"
+                                >
+                                    {props.isMuted ? <MicOff className="h-4 w-4 text-red-400" /> : <Mic className="text-white h-4 w-4" />}
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={toggleVideo}
+                                    className="hover:text-red-300 hover:bg-[#40444b] h-6 w-6 p-0"
+                                >
+                                    {isVideoEnabled ? <VideoOff className="text-red-400 h-4 w-4" /> : <Video className="text-white h-4 w-4" />}
+                                </Button>
+                            </div>
                         </div>
                         <div className="flex gap-2">
                             <Button
                                 size="sm"
                                 variant={props.localStream ? "default" : "secondary"}
-                                onClick={props.stopVoice}
+                                onClick={props.stopCall}
                                 className="flex-1 bg-[#5865f2] hover:bg-[#4752c4] text-white"
                             >
                                 <PhoneOff className="h-4 w-4" />
@@ -101,7 +130,7 @@ export function Sidebar(props: SidebarProps) {
                     <div className="p-3 border-b border-[#202225]">
                         <Button
                             disabled={!props.connected}
-                            onClick={props.startVoice}
+                            onClick={props.startCall}
                             className="w-full bg-[#3ba55c] hover:bg-[#2d7d32] text-white"
                         >
                             <Phone className="h-4 w-4 mr-2" />
