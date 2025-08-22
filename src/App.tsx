@@ -103,8 +103,14 @@ export default function App() {
           }
           const audio = remoteAudiosRef.current.get(msg.id);
           if (audio && audio.srcObject) {
-            (audio.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
+            (audio.srcObject as MediaStream).getAudioTracks().forEach((track) => track.stop());
             remoteAudiosRef.current.delete(msg.id);
+          }
+
+          const video = remoteVideosRef.current.get(msg.id);
+          if (video && video.srcObject) {
+            (video.srcObject as MediaStream).getVideoTracks().forEach((track) => track.stop());
+            remoteVideosRef.current.delete(msg.id);
           }
         }
         setHaveUserWaitConnection(prev => [...prev.filter(id => id !== msg.id)]);
@@ -160,6 +166,11 @@ export default function App() {
       remoteAudiosRef.current.forEach((audio) => {
         if (audio.srcObject) {
           (audio.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
+        }
+      });
+      remoteVideosRef.current.forEach((video) => {
+        if (video.srcObject) {
+          (video.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
         }
       });
     };
