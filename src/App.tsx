@@ -562,7 +562,7 @@ export default function App() {
           </SheetContent>
         </Sheet>
       </div>
-      <MainChatArea haveVideo={true} remoteVideosRef={remoteVideosRef.current} connected={connected} messages={messages} sendMessage={sendMessage} />
+      <MainChatArea remoteVideosRef={remoteVideosRef.current} connected={connected} messages={messages} sendMessage={sendMessage} />
       {import.meta.env.VITE_environment === "development" && <div className="invisible xl:visible absolute top-1 right-1 z-50"><Logs /></div>}
     </div>
   );

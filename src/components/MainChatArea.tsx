@@ -4,7 +4,6 @@ import { VideoContainer } from "./VideoContainer";
 import { useState } from "react";
 
 interface MainChatAreaProps {
-    haveVideo: boolean;
     connected: boolean;
     messages: string[];
     sendMessage: (message: string) => void;
@@ -17,8 +16,8 @@ export function MainChatArea(props: MainChatAreaProps) {
         <div className="flex-1 flex flex-col bg-[#36393f] max-w-full overflow-x-auto">
 
             {/* Video */}
-            {props.haveVideo && <ScrollArea className={fullScreenVideo ? "flex-1 " : "flex-1 p-4"}>
-                <div className="flex space-x-4">
+            {props.remoteVideosRef.size > 0 && <ScrollArea className={fullScreenVideo ? "w-full h-full" : "p-4"}>
+                <div className={fullScreenVideo ? "" : "flex justify-center space-x-4"}>
                     {[...props.remoteVideosRef.entries()].map(([id, video]) => (
                         <div key={id}>
                             <VideoContainer video={video} setFullScreenVideo={setFullScreenVideo} />
