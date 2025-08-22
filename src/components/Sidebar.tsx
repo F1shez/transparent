@@ -111,22 +111,25 @@ export function Sidebar(props: SidebarProps) {
                 )}
 
                 {/* Waiting Users (Main User Only) */}
-                {props.haveUserWaitConnection.length > 0 && props.isMain && (
+                {props.isMain && props.haveUserWaitConnection.length > 0 && (
                     <div className="p-3 border-b border-[#202225]">
                         <h3 className="text-[#dcddde] text-sm mb-2 flex items-center">
                             <Users className="h-4 w-4 mr-2" />
                             Waiting ({props.haveUserWaitConnection.length})
                         </h3>
                         <ScrollArea className="max-h-32">
-                            {props.onlineUsers.map((user) => (
-                                <div key={user.id} className="flex items-center justify-between mb-2 text-sm">
-                                    <span className="text-[#b9bbbe]" title={user.id}>{user.userName}</span>
+                            {props.haveUserWaitConnection.map((userId) => (
+                                <div key={userId} className="flex items-center justify-between mb-2 text-sm">
+                                    <div>
+                                        <div className="text-[#b9bbbe]">{props.onlineUsers.find((user,) => { return user.id === userId })?.userName}{"\n"}</div>
+                                        <div className="text-[#b9bbbe]">({userId})</div>
+                                    </div>
                                     <div className="flex gap-1">
                                         <Button
                                             size="sm"
                                             variant="ghost"
                                             onClick={() => {
-                                                props.acceptUser(user.id)
+                                                props.acceptUser(userId)
                                             }}
                                             className="h-6 w-6 p-0 text-green-400 hover:text-green-300 hover:bg-[#40444b]"
                                         >
@@ -136,7 +139,7 @@ export function Sidebar(props: SidebarProps) {
                                             size="sm"
                                             variant="ghost"
                                             onClick={() => {
-                                                props.rejectUser(user.id)
+                                                props.rejectUser(userId)
                                             }}
                                             className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-[#40444b]"
                                         >
@@ -153,7 +156,7 @@ export function Sidebar(props: SidebarProps) {
                 <div className="flex-1 p-3">
                     <h3 className="text-[#dcddde] text-sm mb-3 flex items-center">
                         <Users className="h-4 w-4 mr-2" />
-                        Online — {1}
+                        Online — {props.onlineUsers.length + 1}
                     </h3>
                     <ScrollArea className="h-full">
                         <div className="flex items-center mb-2 p-1 rounded hover:bg-[#40444b]">

@@ -25,12 +25,7 @@ export default function App() {
   const { pushLog, Logs } = useLogs();
   const [messages, setMessages] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
-  const [roomId] = useState(
-    getPageName() ||
-    (typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID()
-      : randomString({ length: 32, type: "hex" }))
-  );
+  const [roomId] = useState(getPageName());
   const [isMain, setIsMain] = useState(false);
   const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<user[]>([]);
@@ -182,7 +177,21 @@ export default function App() {
 
   function getPageName() {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('roomId');
+    const roomId = urlParams.get('roomId');
+    if (roomId) {
+      return roomId;
+    } else {
+      const url = new URL(window.location.href);
+
+      const newRoomId = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : randomString({ length: 32, type: "hex" })
+
+      url.searchParams.set('roomId', newRoomId); // если параметр уже есть — заменит
+
+      window.history.replaceState({}, '', url);
+      return newRoomId;
+    }
   }
 
   async function acceptUser(targetId: string) {
@@ -195,6 +204,8 @@ export default function App() {
       pushLog("Peer уже создан");
       return;
     }
+
+    debugger
 
     setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
 
