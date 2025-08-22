@@ -5,14 +5,14 @@ import { user } from "../src/App";
 
 type Msg =
   | { type: "join"; roomId: string, userName: string }
-  | { type: "signal"; to: string; payload: any }
+  | { type: "signal"; to: string; payload: unknown }
   | { type: "ping" };
 
 type Outbound =
   | { type: "joined"; id: string; userName: string; roomId: string; role: "main" | "peer", users: user[] }
   | { type: "peer-joined"; id: string, userName: string }
   | { type: "peer-left"; id: string }
-  | { type: "signal"; from: string; userName: string; payload: any }
+  | { type: "signal"; from: string; userName: string; payload: unknown }
   | { type: "main-changed"; id: string };
 
 type ClientState = {
