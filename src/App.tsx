@@ -243,7 +243,7 @@ export default function App() {
     setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
   }
 
-  async function startVoice() {
+  async function startCall() {
     if (localStream) {
       pushLog("Voice already started");
       return;
@@ -285,7 +285,7 @@ export default function App() {
     }
   }
 
-  async function stopVoice() {
+  async function stopCall() {
     if (!localStream) {
       pushLog("Voice not started");
       return;
@@ -507,8 +507,8 @@ export default function App() {
     <Sidebar
       className=""
       connected={connected}
-      startVoice={startVoice}
-      stopVoice={stopVoice}
+      startCall={startCall}
+      stopCall={stopCall}
       acceptUser={acceptUser}
       rejectUser={rejectUser}
       selfId={myIdRef.current!}

@@ -16,8 +16,8 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
     haveUserWaitConnection: string[]
     acceptUser: (userId: string) => void;
     rejectUser: (userId: string) => void;
-    startVoice: () => void;
-    stopVoice: () => void;
+    startCall: () => void;
+    stopCall: () => void;
     isMuted: boolean;
     toggleMute: () => void;
     startVideo: () => void;
@@ -116,7 +116,7 @@ export function Sidebar(props: SidebarProps) {
                             <Button
                                 size="sm"
                                 variant={props.localStream ? "default" : "secondary"}
-                                onClick={props.stopVoice}
+                                onClick={props.stopCall}
                                 className="flex-1 bg-[#5865f2] hover:bg-[#4752c4] text-white"
                             >
                                 <PhoneOff className="h-4 w-4" />
@@ -130,7 +130,7 @@ export function Sidebar(props: SidebarProps) {
                     <div className="p-3 border-b border-[#202225]">
                         <Button
                             disabled={!props.connected}
-                            onClick={props.startVoice}
+                            onClick={props.startCall}
                             className="w-full bg-[#3ba55c] hover:bg-[#2d7d32] text-white"
                         >
                             <Phone className="h-4 w-4 mr-2" />
