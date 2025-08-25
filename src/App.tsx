@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { createPeer, type SignalEnvelope } from "./lib/webrtc";
-import randomString from "crypto-random-string";
 import { useLogs } from "./components/Logs";
 import { Toaster } from "react-hot-toast";
 import { Sidebar } from "./components/Sidebar";
@@ -8,32 +7,37 @@ import { MainChatArea } from "./components/MainChatArea";
 import { Sheet, SheetContent, SheetDescription, SheetTrigger } from "./components/ui/sheet";
 import { Menu } from "lucide-react";
 import { DialogTitle } from "./components/ui/dialog";
-
-export interface user {
-  id: string;
-  userName: string;
-}
+import { useStore, type user } from "./lib/store";
+import { silentAudioHack } from "./lib/utils";
+import { handleData } from "./lib/peerHandlers";
 
 type ServerMsg =
   | { type: "joined"; id: string; roomId: string; userName: string; role: "main" | "peer", users?: user[] }
   | { type: "peer-joined"; id: string, userName: string }
   | { type: "peer-left"; id: string }
   | { type: "signal"; from: string; userName: string; payload: SignalEnvelope }
-  | { type: "main-changed"; id: string };
+  | { type: "main-changed"; id: string }
+  | { type: "sync"; users: user[] };
 
 export default function App() {
   const { pushLog, Logs } = useLogs();
-  const [messages, setMessages] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
-  const [roomId] = useState(getPageName());
+
+  const {
+    roomId,
+    remoteAudios,
+    remoteVideos,
+    addMessage,
+    setWs,
+    onlineUsers,
+    setOnlineUsers,
+    addUserToOnline,
+    removeUserFromOnline
+  } = useStore();
+
   const [isMain, setIsMain] = useState(false);
-  const [haveUserWaitConnection, setHaveUserWaitConnection] = useState<string[]>([]);
-  const [onlineUsers, setOnlineUsers] = useState<user[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
-
-  const remoteAudiosRef = useRef<Map<string, HTMLAudioElement>>(new Map());  // For storing <audio> for each peer
-  const remoteVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map()); // For storing <video> for each peer
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -44,9 +48,22 @@ export default function App() {
   const joinedRef = useRef(false);
 
   useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        wsRef.current?.send(JSON.stringify({ type: "sync" }));
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  useEffect(() => {
+    silentAudioHack();
+
     const urlWs = import.meta.env.VITE_URL_WS || prompt("Enter URL WebSocket: ");
     const ws = new WebSocket(urlWs);
     wsRef.current = ws;
+    setWs(wsRef.current)
 
     ws.onopen = () => {
       pushLog("WS open");
@@ -87,8 +104,7 @@ export default function App() {
 
       if (msg.type === "peer-joined") {
         pushLog(`Peer joined: ${msg.id}.`);
-        setHaveUserWaitConnection(prev => [...prev, msg.id]);
-        setOnlineUsers(prev => [...prev, { id: msg.id, userName: msg.userName }]);
+        addUserToOnline({ id: msg.id, userName: msg.userName, waitingAccept: true });
         return;
       }
 
@@ -101,21 +117,35 @@ export default function App() {
             peersRef.current.delete(msg.id);
             pushLog('delete peer')
           }
-          const audio = remoteAudiosRef.current.get(msg.id);
+          const audio = remoteAudios.get(msg.id);
           if (audio && audio.srcObject) {
             (audio.srcObject as MediaStream).getAudioTracks().forEach((track) => track.stop());
-            remoteAudiosRef.current.delete(msg.id);
+            // remoteAudios.delete(msg.id);
+            useStore.setState((prev) => {
+              const newMap = new Map(prev.remoteAudios);
+              newMap.delete(msg.id);
+              return { remoteAudios: newMap };
+            });
           }
 
-          const video = remoteVideosRef.current.get(msg.id);
+          const video = remoteVideos.get(msg.id);
           if (video && video.srcObject) {
             (video.srcObject as MediaStream).getVideoTracks().forEach((track) => track.stop());
-            remoteVideosRef.current.delete(msg.id);
+            // remoteVideosRef.current.delete(msg.id);
+            useStore.setState((prev) => {
+              const newMap = new Map(prev.remoteVideos);
+              newMap.delete(msg.id);
+              return { remoteVideos: newMap };
+            });
           }
         }
-        setHaveUserWaitConnection(prev => [...prev.filter(id => id !== msg.id)]);
-        setOnlineUsers(prev => [...prev.filter(user => user.id !== msg.id)]);
+        removeUserFromOnline(msg.id);
         setConnected(false);
+        return;
+      }
+
+      if (msg.type === "sync") {
+        setOnlineUsers(msg.users);
         return;
       }
 
@@ -153,7 +183,9 @@ export default function App() {
           }
         }
       }
+
     };
+
 
     ws.onerror = () => pushLog("WS error");
     ws.onclose = () => pushLog("WS closed");
@@ -163,12 +195,12 @@ export default function App() {
       if (localStream) {
         localStream.getTracks().forEach((track) => track.stop());
       }
-      remoteAudiosRef.current.forEach((audio) => {
+      remoteAudios.forEach((audio) => {
         if (audio.srcObject) {
           (audio.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
         }
       });
-      remoteVideosRef.current.forEach((video) => {
+      remoteVideos.forEach((video) => {
         if (video.srcObject) {
           (video.srcObject as MediaStream).getTracks().forEach((track) => track.stop());
         }
@@ -178,33 +210,14 @@ export default function App() {
 
   useEffect(() => {
     if (localStream)
-      remoteAudiosRef.current.forEach((audio, peerId) => {
+      remoteAudios.forEach((audio, peerId) => {
         audio.play().catch((e) => pushLog(`Deferred audio play error (${peerId}): ${e}`));
       });
-  }, [localStream, pushLog, remoteAudiosRef])
+  }, [localStream, pushLog, remoteAudios])
 
 
   function sendSignal(to: string, payload: SignalEnvelope) {
     wsRef.current?.send(JSON.stringify({ type: "signal", to, payload }));
-  }
-
-  function getPageName() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomId = urlParams.get('roomId');
-    if (roomId) {
-      return roomId;
-    } else {
-      const url = new URL(window.location.href);
-
-      const newRoomId = typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : randomString({ length: 32, type: "hex" })
-
-      url.searchParams.set('roomId', newRoomId); // если параметр уже есть — заменит
-
-      window.history.replaceState({}, '', url);
-      return newRoomId;
-    }
   }
 
   async function acceptUser(targetId: string) {
@@ -218,7 +231,12 @@ export default function App() {
       return;
     }
 
-    setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
+    const updatedUsers: user[] = onlineUsers.map(user =>
+      user.id === targetId
+        ? { ...user, waitingAccept: false }
+        : user
+    );
+    setOnlineUsers(updatedUsers);
 
     const peer = createPeer(true, {
       onData: (text) => handleData(targetId, text),
@@ -251,7 +269,7 @@ export default function App() {
   }
 
   async function rejectUser(targetId: string) {
-    setHaveUserWaitConnection(prev => [...prev.filter(id => id !== targetId)]);
+    removeUserFromOnline(targetId);
   }
 
   async function startCall() {
@@ -276,7 +294,7 @@ export default function App() {
         renegotiate(peerId);
       });
 
-      remoteAudiosRef.current.forEach((audio, peerId) => {
+      remoteAudios.forEach((audio, peerId) => {
         if (audio.srcObject) {
           (audio.srcObject as MediaStream).getTracks().forEach((track) => track.enabled = true);
         }
@@ -284,7 +302,7 @@ export default function App() {
         pushLog(`Stopped remote audio from ${peerId}`);
       });
 
-      remoteVideosRef.current.forEach((video, peerId) => {
+      remoteVideos.forEach((video, peerId) => {
         if (video.srcObject) {
           (video.srcObject as MediaStream).getVideoTracks().forEach((track) => track.enabled = true);
         }
@@ -310,7 +328,7 @@ export default function App() {
     pushLog("Local audio stopped");
 
     // Останавливаем все удалённые аудио (чтобы я никого не слышал)
-    remoteAudiosRef.current.forEach((audio, peerId) => {
+    remoteAudios.forEach((audio, peerId) => {
       if (audio.srcObject) {
         (audio.srcObject as MediaStream).getAudioTracks().forEach((track) => track.enabled = false);
       }
@@ -318,7 +336,7 @@ export default function App() {
       pushLog(`Stopped remote audio from ${peerId}`);
     });
 
-    remoteVideosRef.current.forEach((video, peerId) => {
+    remoteVideos.forEach((video, peerId) => {
       if (video.srcObject) {
         (video.srcObject as MediaStream).getVideoTracks().forEach((track) => track.enabled = false);
       }
@@ -422,29 +440,6 @@ export default function App() {
     });
   }
 
-  async function handleData(peerId: string, data: string) {
-    try {
-      const json = JSON.parse(data);
-      setMessages((m) => [...m, `${json.userName} (${json.from}): ${json.text}`]);
-
-      if (isMain) {
-        // Forward to all other peers
-        const forward = JSON.stringify(json);
-        peersRef.current.forEach((p, id) => {
-          if (id !== peerId && p) {
-            try {
-              p.channel.send(forward);
-            } catch (e) {
-              console.error(`Failed to forward to ${id}:`, e);
-            }
-          }
-        });
-      }
-    } catch (e) {
-      console.error("Invalid message data:", e);
-    }
-  }
-
   async function handleTrack(fromId: string, event: RTCTrackEvent) {
 
     console.log('handleTrack called with:', { fromId, event });
@@ -454,7 +449,11 @@ export default function App() {
     stream.onremovetrack = (ev) => {
       if (ev.track.kind === "video") {
         pushLog("Remote peer turned off video");
-        remoteVideosRef.current.delete(fromId);
+        useStore.setState((prev) => {
+          const newMap = new Map(prev.remoteAudios);
+          newMap.delete(fromId);
+          return { remoteAudios: newMap };
+        });
       }
     };
 
@@ -466,7 +465,7 @@ export default function App() {
       const audio = new Audio();
       audio.srcObject = new MediaStream(audioTracks);
       audio.autoplay = true;
-      remoteAudiosRef.current.set(fromId, audio);
+      remoteAudios.set(fromId, audio);
       pushLog(`Audio track received from ${fromId}`);
     }
 
@@ -474,12 +473,14 @@ export default function App() {
     const videoTracks = stream.getVideoTracks();
     if (videoTracks.length > 0) {
       // Создаем или используем существующий <video> элемент
-      let videoEl = remoteVideosRef.current.get(fromId);
+      let videoEl = remoteVideos.get(fromId);
       if (!videoEl) {
         videoEl = document.createElement("video");
         videoEl.autoplay = true;
         videoEl.playsInline = true;
-        remoteVideosRef.current.set(fromId, videoEl);
+        useStore.setState((prev) => ({
+          remoteVideos: new Map(prev.remoteVideos).set(fromId, videoEl!)
+        }));
       }
       videoEl.srcObject = new MediaStream(videoTracks);
       pushLog(`Video track received from ${fromId}`);
@@ -507,7 +508,7 @@ export default function App() {
       if (!peer) return;
       try {
         peer.channel.send(json);
-        setMessages((m) => [...m, `Me: ${message}`]);
+        addMessage(`Me: ${message}`);
       } catch (e) {
         console.error(e);
       }
@@ -524,10 +525,8 @@ export default function App() {
       rejectUser={rejectUser}
       selfId={myIdRef.current!}
       selfName={myNameRef.current!}
-      haveUserWaitConnection={haveUserWaitConnection}
       localStream={localStream}
       roomId={roomId}
-      onlineUsers={onlineUsers}
       isMain={isMain}
       isMuted={isMuted}
       toggleMute={toggleMute}
@@ -562,7 +561,7 @@ export default function App() {
           </SheetContent>
         </Sheet>
       </div>
-      <MainChatArea remoteVideosRef={remoteVideosRef.current} connected={connected} messages={messages} sendMessage={sendMessage} />
+      <MainChatArea connected={connected} sendMessage={sendMessage} />
       {import.meta.env.VITE_environment === "development" && <div className="invisible xl:visible absolute top-1 right-1 z-50"><Logs /></div>}
     </div>
   );

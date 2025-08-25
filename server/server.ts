@@ -1,19 +1,21 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "crypto";
 import { readFileSync } from "fs";
-import { user } from "../src/App";
+import { user } from "../src/lib/store";
 
 type Msg =
   | { type: "join"; roomId: string, userName: string }
   | { type: "signal"; to: string; payload: unknown }
-  | { type: "ping" };
+  | { type: "ping" }
+  | { type: "sync" };
 
 type Outbound =
   | { type: "joined"; id: string; userName: string; roomId: string; role: "main" | "peer", users: user[] }
   | { type: "peer-joined"; id: string, userName: string }
   | { type: "peer-left"; id: string }
   | { type: "signal"; from: string; userName: string; payload: unknown }
-  | { type: "main-changed"; id: string };
+  | { type: "main-changed"; id: string }
+  | { type: "sync"; users: user[] };
 
 type ClientState = {
   id: string;
@@ -111,6 +113,21 @@ wss.on("connection", (ws) => {
       }
       return;
     }
+
+    if (msg.type === "sync") {
+      const roomId = state.roomId;
+      if (!roomId) return;
+      const roomSet = rooms.get(roomId);
+      if (!roomSet) return;
+
+      const users = [...roomSet].map(client => {
+        const cs = clients.get(client);
+        return cs ? { id: cs.id, userName: cs.userName || "Anonymous" } : null;
+      }).filter((u): u is { id: string; userName: string } => u !== null);
+
+      send(ws, { type: "sync", users });
+      return;
+    }
   });
 
   ws.on("close", () => {
@@ -138,6 +155,7 @@ wss.on("connection", (ws) => {
       }
     }
   });
+
 });
 
 console.log("Signaling server running on 60764");
