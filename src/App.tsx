@@ -9,7 +9,7 @@ import { Menu } from "lucide-react";
 import { DialogTitle } from "./components/ui/dialog";
 import { useStore, type user } from "./lib/store";
 import { silentAudioHack } from "./lib/utils";
-import { handleData } from "./lib/peerHandlers";
+import { handleData, handleTrack } from "./lib/peerHandlers";
 
 type ServerMsg =
   | { type: "joined"; id: string; roomId: string; userName: string; role: "main" | "peer", users?: user[] }
@@ -120,7 +120,6 @@ export default function App() {
           const audio = remoteAudios.get(msg.id);
           if (audio && audio.srcObject) {
             (audio.srcObject as MediaStream).getAudioTracks().forEach((track) => track.stop());
-            // remoteAudios.delete(msg.id);
             useStore.setState((prev) => {
               const newMap = new Map(prev.remoteAudios);
               newMap.delete(msg.id);
@@ -131,7 +130,6 @@ export default function App() {
           const video = remoteVideos.get(msg.id);
           if (video && video.srcObject) {
             (video.srcObject as MediaStream).getVideoTracks().forEach((track) => track.stop());
-            // remoteVideosRef.current.delete(msg.id);
             useStore.setState((prev) => {
               const newMap = new Map(prev.remoteVideos);
               newMap.delete(msg.id);
@@ -159,7 +157,23 @@ export default function App() {
               pushLog("DataChannel open");
               setConnected(true);
             },
-            onTrack: (event) => handleTrack(msg.from, event),
+            onTrack: (event) => {
+              const stream = event.streams[0];
+              if (!stream) return;
+              handleTrack(msg.from, event);
+              // Если main — ретрансляция треков другим пирами
+              if (isMain) {
+                peersRef.current.forEach((peer, id) => {
+                  if (!peer || msg.from === id) return;
+                  stream.getTracks().forEach(track => {
+                    const alreadyAdded = peer.pc.getSenders().some(s => s.track === track);
+                    if (!alreadyAdded) peer.pc.addTrack(track, stream);
+                  });
+                  // pushLog(`Forwarded tracks to peer ${id}`);
+                  renegotiate(id);
+                });
+              }
+            },
             onSignalingStateChange: (s) => pushLog(`Signaling: ${s}`),
           });
           peersRef.current.set(msg.from, peer);
@@ -244,7 +258,23 @@ export default function App() {
         pushLog("DataChannel open");
         setConnected(true);
       },
-      onTrack: (event) => handleTrack(targetId, event),
+      onTrack: (event) => {
+        const stream = event.streams[0];
+        if (!stream) return;
+        handleTrack(targetId, event);
+        // Если main — ретрансляция треков другим пирами
+        if (isMain) {
+          peersRef.current.forEach((peer, id) => {
+            if (!peer || targetId === id) return;
+            stream.getTracks().forEach(track => {
+              const alreadyAdded = peer.pc.getSenders().some(s => s.track === track);
+              if (!alreadyAdded) peer.pc.addTrack(track, stream);
+            });
+            // pushLog(`Forwarded tracks to peer ${id}`);
+            renegotiate(id);
+          });
+        }
+      },
       onSignalingStateChange: (s) => pushLog(`Signaling: ${s}`),
     });
 
@@ -438,66 +468,6 @@ export default function App() {
       // Renegotiation, so everyone knows that the video is no longer available.
       renegotiate(peerId);
     });
-  }
-
-  async function handleTrack(fromId: string, event: RTCTrackEvent) {
-
-    console.log('handleTrack called with:', { fromId, event });
-    const stream = event.streams[0];
-    if (!stream) return;
-
-    stream.onremovetrack = (ev) => {
-      if (ev.track.kind === "video") {
-        pushLog("Remote peer turned off video");
-        useStore.setState((prev) => {
-          const newMap = new Map(prev.remoteAudios);
-          newMap.delete(fromId);
-          return { remoteAudios: newMap };
-        });
-      }
-    };
-
-    pushLog(`Received remote stream from ${fromId}`);
-
-    // Проверка аудио
-    const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length > 0) {
-      const audio = new Audio();
-      audio.srcObject = new MediaStream(audioTracks);
-      audio.autoplay = true;
-      remoteAudios.set(fromId, audio);
-      pushLog(`Audio track received from ${fromId}`);
-    }
-
-    // Проверка видео
-    const videoTracks = stream.getVideoTracks();
-    if (videoTracks.length > 0) {
-      // Создаем или используем существующий <video> элемент
-      let videoEl = remoteVideos.get(fromId);
-      if (!videoEl) {
-        videoEl = document.createElement("video");
-        videoEl.autoplay = true;
-        videoEl.playsInline = true;
-        useStore.setState((prev) => ({
-          remoteVideos: new Map(prev.remoteVideos).set(fromId, videoEl!)
-        }));
-      }
-      videoEl.srcObject = new MediaStream(videoTracks);
-      pushLog(`Video track received from ${fromId}`);
-    }
-
-    // Если main — ретрансляция треков другим пирами
-    if (isMain) {
-      peersRef.current.forEach((peer, id) => {
-        if (!peer || fromId === id) return;
-        stream.getTracks().forEach(track => {
-          const alreadyAdded = peer.pc.getSenders().some(s => s.track === track);
-          if (!alreadyAdded) peer.pc.addTrack(track, stream);
-        });
-        pushLog(`Forwarded tracks to peer ${id}`);
-        renegotiate(id);
-      });
-    }
   }
 
   async function sendMessage(message: string) {

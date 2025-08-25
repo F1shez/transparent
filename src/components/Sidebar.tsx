@@ -28,6 +28,11 @@ export function Sidebar(props: SidebarProps) {
 
     const { onlineUsers } = useStore();
 
+    function stopCall() {
+        setIsVideoEnabled(false);
+        props.stopCall();
+    }
+
     useEffect(() => {
         setIsVideoEnabled((props.localStream?.getVideoTracks() && props.localStream?.getVideoTracks().length > 0) !== undefined);
     }, [])
@@ -117,7 +122,7 @@ export function Sidebar(props: SidebarProps) {
                             <Button
                                 size="sm"
                                 variant={props.localStream ? "default" : "secondary"}
-                                onClick={props.stopCall}
+                                onClick={stopCall}
                                 className="flex-1 bg-[#5865f2] hover:bg-[#4752c4] text-white"
                             >
                                 <PhoneOff className="h-4 w-4" />
